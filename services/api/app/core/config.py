@@ -18,6 +18,14 @@ class Settings(BaseSettings):
 
     env: Literal["dev", "test", "prod"] = "dev"
     service_name: str = "api"
+    log_level: str = "INFO"
+
+    # Пул соединений с БД: создаётся один раз в lifespan и живёт всё время работы процесса.
+    db_pool_size: int = 10
+    db_max_overflow: int = 5
+    # Таймаут одной проверки в /health/ready: зависшая БД не должна вешать сам healthcheck.
+    health_check_timeout: float = 2.0
+    http_client_timeout: float = 10.0
 
     postgres_host: str = "postgres"
     postgres_port: int = 5432

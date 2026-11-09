@@ -3,7 +3,18 @@ name = "forsunki-api"
 version = "0.1.0"
 description = "Бэкенд ForsunkiShop: модульный монолит (FastAPI)"
 requires-python = ">=3.12,<3.13"
-dependencies = ["pydantic-settings>=2.6"]
+dependencies = [
+    "aio-pika>=9.4",
+    "alembic>=1.14",
+    "asyncpg>=0.30",
+    "fastapi>=0.115",
+    "httpx>=0.28",
+    "pydantic-settings>=2.6",
+    "redis>=5.2",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "structlog>=24.4",
+    "uvicorn[standard]>=0.32",
+]
 
 [dependency-groups]
 dev = [
@@ -12,6 +23,7 @@ dev = [
     "pytest-cov>=6.0",
     "mypy>=1.13",
     "ruff>=0.8",
+    "testcontainers[postgres,rabbitmq,redis]>=4.8",
 ]
 
 [tool.pytest.ini_options]

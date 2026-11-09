@@ -7,6 +7,22 @@ x-logging: &default-logging
     max-size: "10m"
     max-file: "3"
 
+# Общие настройки api, worker и migrate: один образ, разные команды.
+x-api-build: &api-build
+  image: forsunki-api:dev
+  build:
+    context: ..
+    dockerfile: services/api/Dockerfile
+
+x-api-env: &api-env
+  ENV: ${ENV:-dev}
+  POSTGRES_HOST: postgres
+  POSTGRES_USER: ${POSTGRES_USER:-forsunki}
+  POSTGRES_DB: ${POSTGRES_DB:-forsunki}
+  REDIS_HOST: redis
+  RABBITMQ_HOST: rabbitmq
+  RABBITMQ_USER: ${RABBITMQ_USER:-forsunki}
+
 # Сети разделены по назначению. `data` внутренняя (internal): из неё нет выхода наружу,
 # а хранилища доступны только приложениям. В dev порты пробрасывает compose.dev.yml.
 networks:
@@ -113,4 +129,39 @@ services:
     deploy:
       resources:
         limits: {cpus: "1.0", memory: 768M}
+    logging: *default-logging
+
+  # Одноразовый контейнер миграций: api стартует только после его успешного завершения.
+  migrate:
+    <<: *api-build
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    init: true
+    environment: *api-env
+    secrets: [postgres_password, redis_password, rabbitmq_password]
+    depends_on:
+      postgres: {condition: service_healthy}
+    networks: [data]
+    deploy:
+      resources:
+        limits: {cpus: "0.5", memory: 256M}
+    logging: *default-logging
+
+  api:
+    <<: *api-build
+    restart: unless-stopped
+    init: true               # PID 1 корректно передаёт сигналы и подбирает «зомби»
+    stop_grace_period: 30s   # больше, чем --timeout-graceful-shutdown (25 с) в CMD образа
+    environment: *api-env
+    secrets: [postgres_password, redis_password, rabbitmq_password]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
+    networks: [backend, data]
+    # healthcheck описан в Dockerfile (/health/live)
+    deploy:
+      resources:
+        limits: {cpus: "1.0", memory: 512M}
     logging: *default-logging
