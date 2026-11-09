@@ -30,6 +30,7 @@ log = structlog.get_logger("orders")
 
 DEFAULT_LIMIT = 20
 MAX_LIMIT = 100
+EXPIRE_DELAY_KEY = "order.expire.delay"  # ключ, под которым событие попадает в очередь с задержкой
 
 
 def encode_cursor(created_at: datetime, order_id: uuid.UUID) -> str:
@@ -118,6 +119,9 @@ class OrderService:
         self._orders.add(order)
         await self._session.flush()
         await self._events.publish("order.created", _event_payload(order, with_items=True))
+        # Отложенное истечение: событие попадёт в очередь с TTL (см. worker), по истечении срока оплаты вернётся
+        # как order.expire, и неоплаченный заказ будет закрыт, а товар возвращён на склад.
+        await self._events.publish(EXPIRE_DELAY_KEY, {"order_id": str(order.id)})
         await self._cart.clear(user_id)
         await self._session.flush()
         log.info("order_created", order_id=str(order.id), user_id=str(user_id))
@@ -137,7 +141,7 @@ class OrderService:
         order = await self._orders.get(order_id, user_id=user_id)
         if order is None:
             raise NotFoundError("Заказ не найден")  # чужой заказ неотличим от несуществующего
-        await self._change_status(order_id, OrderStatus.CANCELLED)
+        await self.change_status(order_id, OrderStatus.CANCELLED)
         refreshed = await self._orders.get(order_id, user_id=user_id)
         if refreshed is None:
             raise NotFoundError("Заказ не найден")
@@ -149,11 +153,11 @@ class OrderService:
 
         Повтор того же перехода безопасен и возвращает False: событие может прийти дважды.
         """
-        changed = await self._change_status(order_id, target)
+        changed = await self.change_status(order_id, target)
         await self._session.commit()
         return changed
 
-    async def _change_status(self, order_id: uuid.UUID, target: OrderStatus) -> bool:
+    async def change_status(self, order_id: uuid.UUID, target: OrderStatus) -> bool:
         now = datetime.now(UTC)
         if not await self._orders.transition(order_id, sources_for(target), target, now):
             current = await self._orders.get(order_id)
@@ -190,3 +194,24 @@ class OrderService:
         page = rows[:limit]
         next_cursor = encode_cursor(page[-1].created_at, page[-1].id) if len(rows) > limit else None
         return OrderPage(items=[OrderOut.model_validate(o) for o in page], next_cursor=next_cursor)
+
+    async def expire_if_pending(self, order_id: uuid.UUID) -> bool:
+        """Закрывает неоплаченный заказ по истечении срока. Коммит выполняет вызывающий код.
+
+        Заказ мог уже быть оплачен, отменён или закрыт: это не ошибка, истечение просто ничего не делает.
+        """
+        try:
+            changed = await self.change_status(order_id, OrderStatus.EXPIRED)
+        except InvalidTransitionError as exc:
+            log.info("order_not_expirable", order_id=str(order_id), status=exc.current.value)
+            return False
+        except NotFoundError:
+            log.warning("order_to_expire_not_found", order_id=str(order_id))
+            return False
+        return changed
+
+    async def expired_pending_ids(self, grace_seconds: float, limit: int) -> list[uuid.UUID]:
+        """Заказы, у которых срок оплаты давно вышел, а статус всё ещё PENDING_PAYMENT (для страховочного обхода)."""
+        return await self._orders.expired_pending_ids(
+            datetime.now(UTC) - timedelta(seconds=grace_seconds), limit
+        )

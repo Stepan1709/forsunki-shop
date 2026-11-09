@@ -41,6 +41,8 @@ def _env(settings: Settings) -> dict[str, str]:
         "S3_PUBLIC_ENDPOINT_URL": settings.s3_public_endpoint_url,
         "S3_ACCESS_KEY": settings.s3_access_key.get_secret_value(),
         "S3_SECRET_KEY": settings.s3_secret_key.get_secret_value(),
+        "PAYMENT_API_KEY": settings.payment_api_key.get_secret_value(),
+        "PAYMENT_WEBHOOK_SECRET": settings.payment_webhook_secret.get_secret_value(),
     }
 
 

@@ -2,7 +2,7 @@
 SHELL := /bin/bash
 COMPOSE := docker compose --env-file .env -f deploy/compose.yml -f deploy/compose.dev.yml
 SERVICES := api web payment_stub
-SECRETS := postgres_password redis_password rabbitmq_password jwt_secret s3_access_key s3_secret_key
+SECRETS := postgres_password redis_password rabbitmq_password jwt_secret s3_access_key s3_secret_key payment_api_key payment_webhook_secret
 
 .DEFAULT_GOAL := help
 .PHONY: help env secrets up up-full down logs migrate test e2e lint fmt create-admin seed bench
@@ -46,8 +46,8 @@ test: ## Unit + интеграционные тесты всех сервисо�
 	  echo "== $$s"; (cd services/$$s && uv run pytest) || exit 1; \
 	done
 
-e2e: ## Сквозной сценарий (появится вместе с оплатой)
-	@echo "e2e: сквозной сценарий появится вместе с сайтом и оплатой"
+e2e: ## Сквозной сценарий на запущенном стеке: заказ, оплата в заглушке, статусы
+	cd services/api && uv run python ../../scripts/e2e_payment.py
 
 lint: ## ruff + mypy
 	@for s in $(SERVICES); do \

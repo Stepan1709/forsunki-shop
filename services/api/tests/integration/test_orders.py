@@ -44,7 +44,10 @@ async def events(app: FastAPI) -> list[str]:
     async with app.state.resources.session_factory() as session:
         rows = await session.scalars(
             select(OutboxMessage.routing_key)
-            .where(OutboxMessage.routing_key.like("order.%"))
+            .where(
+                OutboxMessage.routing_key.like("order.%"),
+                OutboxMessage.routing_key != "order.expire.delay",
+            )
             .order_by(OutboxMessage.created_at)
         )
         return list(rows)

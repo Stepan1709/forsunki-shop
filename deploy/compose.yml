@@ -43,6 +43,10 @@ secrets:
     file: ${SECRETS_DIR:-./secrets/dev}/s3_access_key
   s3_secret_key:
     file: ${SECRETS_DIR:-./secrets/dev}/s3_secret_key
+  payment_api_key:
+    file: ${SECRETS_DIR:-./secrets/dev}/payment_api_key
+  payment_webhook_secret:
+    file: ${SECRETS_DIR:-./secrets/dev}/payment_webhook_secret
   jwt_secret:
     file: ${SECRETS_DIR:-./secrets/dev}/jwt_secret
 
@@ -50,6 +54,7 @@ volumes:
   postgres_data: {}
   redis_data: {}
   rabbitmq_data: {}
+  payment_stub_data: {}
 
 services:
   postgres:
@@ -144,7 +149,7 @@ services:
     restart: "no"
     init: true
     environment: *api-env
-    secrets: [postgres_password, redis_password, rabbitmq_password, jwt_secret, s3_access_key, s3_secret_key]
+    secrets: [postgres_password, redis_password, rabbitmq_password, jwt_secret, s3_access_key, s3_secret_key, payment_api_key, payment_webhook_secret]
     depends_on:
       postgres: {condition: service_healthy}
     networks: [data]
@@ -159,7 +164,7 @@ services:
     init: true               # PID 1 корректно передаёт сигналы и подбирает «зомби»
     stop_grace_period: 30s   # больше, чем --timeout-graceful-shutdown (25 с) в CMD образа
     environment: *api-env
-    secrets: [postgres_password, redis_password, rabbitmq_password, jwt_secret, s3_access_key, s3_secret_key]
+    secrets: [postgres_password, redis_password, rabbitmq_password, jwt_secret, s3_access_key, s3_secret_key, payment_api_key, payment_webhook_secret]
     depends_on:
       migrate: {condition: service_completed_successfully}
       postgres: {condition: service_healthy}
@@ -182,7 +187,7 @@ services:
     environment:
       <<: *api-env
       SERVICE_NAME: worker   # поле service в логах воркера
-    secrets: [postgres_password, redis_password, rabbitmq_password, jwt_secret, s3_access_key, s3_secret_key]
+    secrets: [postgres_password, redis_password, rabbitmq_password, jwt_secret, s3_access_key, s3_secret_key, payment_api_key, payment_webhook_secret]
     depends_on:
       migrate: {condition: service_completed_successfully}
       postgres: {condition: service_healthy}
@@ -203,4 +208,27 @@ services:
     deploy:
       resources:
         limits: {cpus: "1.0", memory: 512M}
+    logging: *default-logging
+
+  # Заглушка платёжного провайдера: создаёт платежи, показывает страницу оплаты, шлёт подписанные webhook'и.
+  # Заменяется настоящей онлайн-кассой без изменения кода магазина (он знает только интерфейс PaymentGateway).
+  payment_stub:
+    build:
+      context: ..
+      dockerfile: services/payment_stub/Dockerfile
+    image: forsunki-payment-stub:dev
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+    environment:
+      ENV: ${ENV:-dev}
+      WEBHOOK_URL: http://api:8000/payments/webhook   # в личном кабинете настоящего провайдера задаётся так же
+    secrets: [payment_api_key, payment_webhook_secret]
+    volumes:
+      - payment_stub_data:/data
+    networks: [backend]
+    # healthcheck описан в Dockerfile (/health/live)
+    deploy:
+      resources:
+        limits: {cpus: "0.5", memory: 256M}
     logging: *default-logging

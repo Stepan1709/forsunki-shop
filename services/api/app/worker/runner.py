@@ -1,9 +1,10 @@
-"""Воркер: consumer'ы RabbitMQ и outbox relay в одном процессе (тот же образ, что и api).
+"""Воркер: consumer'ы RabbitMQ, outbox relay и страховочный обход истечения заказов в одном процессе
+(тот же образ, что и api).
 
 Запуск: `python -m app.worker`. Остановка по SIGTERM/SIGINT проходит в таком порядке:
   1. consumer'ы перестают брать новые сообщения (cancel) и дожидаются текущих (с таймаутом);
-  2. relay доводит до конца текущую пачку и останавливается;
-  3. закрываются канал публикации и соединение с брокером, затем пул БД.
+  2. relay и обход доводят текущую пачку до конца и останавливаются;
+  3. закрываются канал публикации, соединение с брокером, HTTP-клиент и пул БД.
 Сначала останавливается приём работы, потом закрываются клиенты, которыми эта работа выполняется.
 """
 
@@ -14,6 +15,7 @@ from contextlib import AsyncExitStack
 from pathlib import Path
 
 import aio_pika
+import httpx
 import structlog
 from aio_pika.abc import AbstractRobustConnection
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -22,8 +24,11 @@ from app.core.config import Settings
 from app.core.logging import configure_logging
 from app.core.messaging.consumer import Consumer, Subscription
 from app.core.messaging.publisher import Publisher
+from app.core.messaging.topology import DelayQueueSpec, declare_delay_queue, declare_exchanges
+from app.modules.payments.factory import build_gateway
 from app.worker.relay import OutboxRelay
-from app.worker.subscriptions import build_subscriptions
+from app.worker.subscriptions import build_delay_queues, build_subscriptions
+from app.worker.sweeper import ExpirySweeper
 
 log = structlog.get_logger("worker")
 
@@ -31,13 +36,24 @@ _HEARTBEAT_SECONDS = 5.0
 
 
 class Worker:
-    def __init__(self, settings: Settings, subscriptions: list[Subscription]) -> None:
+    """`subscriptions` и `delay_queues` по умолчанию собираются из настроек; тесты передают свои."""
+
+    def __init__(
+        self,
+        settings: Settings,
+        subscriptions: list[Subscription] | None = None,
+        delay_queues: list[DelayQueueSpec] | None = None,
+        *,
+        run_sweeper: bool = False,
+    ) -> None:
         self._settings = settings
         self._subscriptions = subscriptions
+        self._delay_queues = delay_queues
+        self._run_sweeper = run_sweeper
         self._stack: AsyncExitStack | None = None
         self._connection: AbstractRobustConnection | None = None
         self._consumers: list[Consumer] = []
-        self._relay_stop = asyncio.Event()
+        self._stop_background = asyncio.Event()
         self._tasks: list[asyncio.Task[None]] = []
 
     async def start(self) -> None:
@@ -47,6 +63,10 @@ class Worker:
             stack.push_async_callback(engine.dispose)
             session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
+            # Клиент для платёжного провайдера: создаётся один раз и закрывается вместе с остальными ресурсами.
+            http = httpx.AsyncClient(timeout=s.payment_request_timeout_seconds)
+            stack.push_async_callback(http.aclose)
+
             connection = self._connection = await aio_pika.connect_robust(
                 s.rabbitmq_url, client_properties={"connection_name": s.service_name}
             )
@@ -55,7 +75,22 @@ class Worker:
             publisher = await Publisher.open(connection)
             stack.push_async_callback(publisher.close)
 
-            for subscription in self._subscriptions:
+            subscriptions = self._subscriptions
+            if subscriptions is None:
+                subscriptions = build_subscriptions(s, build_gateway(s, http))
+            delay_queues = self._delay_queues
+            if delay_queues is None:
+                delay_queues = build_delay_queues(s)
+
+            # Очереди с задержкой объявляются ДО consumer'ов и вместе с ними: сообщение, вернувшееся из такой очереди
+            # в обмен, не имеющий подходящей очереди, было бы потеряно (dead-lettering не бывает mandatory).
+            delay_channel = await connection.channel()
+            stack.push_async_callback(delay_channel.close)
+            events, _ = await declare_exchanges(delay_channel)
+            for spec in delay_queues:
+                await declare_delay_queue(delay_channel, spec, events)
+
+            for subscription in subscriptions:
                 consumer = Consumer(
                     subscription,
                     connection,
@@ -73,7 +108,12 @@ class Worker:
                 batch_size=s.relay_batch_size,
                 poll_interval=s.relay_poll_interval_seconds,
             )
-            self._tasks.append(asyncio.create_task(relay.run(self._relay_stop), name="relay"))
+            self._tasks.append(asyncio.create_task(relay.run(self._stop_background), name="relay"))
+            if self._run_sweeper:
+                sweeper = ExpirySweeper(session_factory, s)
+                self._tasks.append(
+                    asyncio.create_task(sweeper.run(self._stop_background), name="sweeper")
+                )
             if s.worker_heartbeat_path:
                 self._tasks.append(
                     asyncio.create_task(
@@ -88,8 +128,8 @@ class Worker:
         log.info("worker_stopping")
         # 1. Перестаём принимать работу и ждём текущие сообщения.
         await asyncio.gather(*(c.stop() for c in self._consumers))
-        # 2. Relay доводит текущую пачку до конца.
-        self._relay_stop.set()
+        # 2. Фоновые циклы (relay, обход) доводят текущую пачку до конца.
+        self._stop_background.set()
         for task in self._tasks:
             if task.get_name() == "heartbeat":
                 task.cancel()
@@ -108,7 +148,7 @@ class Worker:
 
 
 async def _amain(settings: Settings) -> None:
-    worker = Worker(settings, build_subscriptions(settings))
+    worker = Worker(settings, run_sweeper=True)
     await worker.start()
 
     stop_event = asyncio.Event()
