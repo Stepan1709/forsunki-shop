@@ -66,6 +66,16 @@ class Settings(BaseSettings):
     cache_list_ttl_seconds: int = 120
     cache_lock_ttl_seconds: int = 10
 
+    # Воркер и обмен сообщениями (RabbitMQ).
+    consumer_prefetch: int = 10  # сколько сообщений брокер выдаёт consumer'у без подтверждения
+    # Паузы перед повторами (секунды); длина списка = максимум повторов. Менять можно только вместе с
+    # пересозданием очередей: аргументы очереди после объявления не меняются.
+    consumer_retry_delays_seconds: list[float] = [5.0, 30.0, 120.0]
+    relay_batch_size: int = 50  # сколько событий outbox отправляется за одну итерацию
+    relay_poll_interval_seconds: float = 0.5  # пауза, когда новых событий нет
+    worker_shutdown_timeout_seconds: float = 25.0  # < stop_grace_period контейнера (30 с)
+    worker_heartbeat_path: str | None = "/tmp/worker-alive"  # noqa: S108  (файл-«пульс» для healthcheck)
+
     # Rate limiting (Redis). Окна в секундах.
     register_ip_limit: int = 5
     register_window_seconds: int = 3600
