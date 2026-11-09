@@ -1,0 +1,8 @@
+# Всегда LF: Dockerfile, Makefile и shell-скрипты с CRLF ломаются внутри Linux-контейнеров и WSL.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary
+*.woff2 binary

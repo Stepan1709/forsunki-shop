@@ -1,0 +1,20 @@
+# Общая конфигурация Ruff для всех сервисов: Ruff ищет ближайший конфиг вверх по дереву.
+target-version = "py312"
+line-length = 100
+
+[lint]
+select = [
+    "E", "F", "W",  # pycodestyle, pyflakes
+    "I",            # сортировка импортов
+    "UP",           # современный синтаксис Python
+    "B",            # flake8-bugbear
+    "ASYNC",        # ошибки в async-коде (блокирующие вызовы)
+    "S",            # bandit: базовая безопасность
+    "SIM", "C4", "RUF", "PT",
+]
+
+[lint.per-file-ignores]
+"**/tests/**" = ["S101", "S105", "S106"]  # assert и тестовые «пароли» допустимы
+
+[lint.isort]
+known-first-party = ["app"]

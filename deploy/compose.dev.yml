@@ -1,0 +1,56 @@
+# Только для разработки: проброс портов на localhost и вспомогательные инструменты.
+# Сеть `data` внутренняя и порты через неё не публикуются, поэтому подключаем `dev`.
+networks:
+  dev: {}
+
+services:
+  postgres:
+    networks: [data, dev]
+    # Хост-порт по умолчанию 5433: 5432 часто занят локальным Postgres на Windows.
+    ports: ["127.0.0.1:${POSTGRES_PUBLISH_PORT:-5433}:5432"]
+
+  redis:
+    networks: [data, dev]
+    ports: ["127.0.0.1:6379:6379"]
+
+  rabbitmq:
+    networks: [data, dev]
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"   # веб-интерфейс
+
+  adminer:
+    image: adminer:4.8.1
+    restart: unless-stopped
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    depends_on:
+      postgres: {condition: service_healthy}
+    networks: [data, dev]
+    ports: ["127.0.0.1:8080:8080"]
+    deploy:
+      resources:
+        limits: {cpus: "0.25", memory: 128M}
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+  # Принимает письма вместо реальной отправки (SMTP :1025, интерфейс :8025).
+  mailpit:
+    image: axllent/mailpit:v1.21.8
+    restart: unless-stopped
+    networks: [backend, dev]
+    ports:
+      - "127.0.0.1:8025:8025"
+      - "127.0.0.1:1025:1025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits: {cpus: "0.25", memory: 128M}
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
