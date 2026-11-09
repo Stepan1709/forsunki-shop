@@ -76,7 +76,7 @@ class Settings(BaseSettings):
     worker_shutdown_timeout_seconds: float = 25.0  # < stop_grace_period контейнера (30 с)
     worker_heartbeat_path: str | None = "/tmp/worker-alive"  # noqa: S108  (файл-«пульс» для healthcheck)
 
-    # Заказы: сколько минут даётся на оплату, затем резерв снимается (истечение, этап 6).
+    # Заказы: сколько минут даётся на оплату, затем резерв снимается (истечение заказа).
     order_payment_ttl_minutes: int = 30
 
     # Rate limiting (Redis). Окна в секундах.

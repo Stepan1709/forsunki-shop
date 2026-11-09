@@ -32,7 +32,7 @@ class Order(Base):
     currency: Mapped[str] = mapped_column(String(3), default="RUB")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    # До этого момента заказ можно оплатить; потом он истекает, и резерв возвращается (этап 6).
+    # До этого момента заказ можно оплатить; потом он истекает, и резерв возвращается.
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
 
@@ -44,7 +44,7 @@ class Order(Base):
         CheckConstraint("total_kopecks >= 0", name="total_non_negative"),
         # История заказов пользователя: по пользователю, от новых к старым.
         Index("ix_orders_user_created", "user_id", "created_at", "id"),
-        # Поиск заказов, у которых вышел срок оплаты (этап 6).
+        # Поиск заказов, у которых вышел срок оплаты.
         Index(
             "ix_orders_pending_expires", "expires_at", postgresql_where="status = 'PENDING_PAYMENT'"
         ),
