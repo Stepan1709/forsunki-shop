@@ -1,0 +1,59 @@
+# Запускать из WSL (Linux-оболочка). Все команды из CLAUDE.md, раздел 15.
+SHELL := /bin/bash
+COMPOSE := docker compose --env-file .env -f deploy/compose.yml -f deploy/compose.dev.yml
+SERVICES := api web payment_stub
+SECRETS := postgres_password redis_password rabbitmq_password
+
+.DEFAULT_GOAL := help
+.PHONY: help env secrets up up-full down logs migrate test e2e lint fmt
+
+help: ## Список команд
+	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
+
+env: ## Создать .env из .env.example, если его нет
+	@test -f .env || { cp .env.example .env; echo "создан .env"; }
+
+secrets: ## Сгенерировать dev-секреты в deploy/secrets/dev (существующие не трогает)
+	@mkdir -p deploy/secrets/dev
+	@for n in $(SECRETS); do \
+	  f=deploy/secrets/dev/$$n; \
+	  if [ ! -f $$f ]; then \
+	    openssl rand -base64 33 | tr -d '/+=\n' > $$f; \
+	    chmod 644 $$f; \
+	    echo "создан $$f"; \
+	  fi; \
+	done
+	# 644, а не 600: процессы в контейнерах (postgres, rabbitmq) работают не от владельца файла.
+	# В prod права настраиваются на сервере, файлы лежат вне репозитория.
+
+up: env secrets ## Поднять ядро (postgres, redis, rabbitmq + dev-инструменты)
+	$(COMPOSE) up -d --wait
+
+up-full: up ## Ядро + логирование и метрики (профили появятся на этапах 9 и 10)
+	$(COMPOSE) --profile logging --profile monitoring up -d --wait
+
+down: ## Остановить
+	$(COMPOSE) --profile logging --profile monitoring down
+
+logs: ## Логи всех контейнеров
+	$(COMPOSE) logs -f --tail=100
+
+migrate: ## Миграции (появятся на этапе 1)
+	@echo "миграций пока нет: Alembic добавляется на этапе 1"
+
+test: ## Unit + интеграционные тесты всех сервисов
+	@for s in $(SERVICES); do \
+	  echo "== $$s"; (cd services/$$s && uv run pytest) || exit 1; \
+	done
+
+e2e: ## Сквозной сценарий (появится вместе с оплатой)
+	@echo "e2e пока нет: сценарий готов после этапа 8"
+
+lint: ## ruff + mypy
+	@for s in $(SERVICES); do \
+	  echo "== $$s"; \
+	  (cd services/$$s && uv run ruff check . && uv run ruff format --check . && uv run mypy app tests) || exit 1; \
+	done
+
+fmt: ## ruff format
+	@for s in $(SERVICES); do (cd services/$$s && uv run ruff check --fix . && uv run ruff format .); done

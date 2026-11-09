@@ -1,0 +1,31 @@
+[project]
+name = "forsunki-web"
+version = "0.1.0"
+description = "Сайт ForsunkiShop: BFF на FastAPI + Jinja2 + HTMX"
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
+    "mypy>=1.13",
+    "ruff>=0.8",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+# Покрытие считаем всегда; порог (fail_under) включим вместе с CI на этапе 12.
+addopts = "--cov=app --cov-report=term-missing --cov-report=xml"
+
+[tool.coverage.run]
+branch = true
+source = ["app"]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"

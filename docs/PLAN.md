@@ -27,7 +27,7 @@ Compose-профили: `core` (по умолчанию), `logging`, `monitoring
 
 ---
 
-## Этап 0. Каркас ☐
+## Этап 0. Каркас ☑
 
 **Задачи**
 - Репозиторий, структура папок, `CLAUDE.md`, README, `.gitignore`, `.dockerignore`, `.env.example`, pre-commit (ruff, gitleaks).
