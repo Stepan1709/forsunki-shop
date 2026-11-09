@@ -33,7 +33,8 @@ flowchart LR
 
 ```bash
 make secrets   # случайные пароли в deploy/secrets/dev (не коммитятся)
-make up        # postgres, redis, rabbitmq + Adminer, Mailpit
+make up        # postgres, redis, rabbitmq, api, S3-хранилище + Adminer, Mailpit
+make seed      # заполнить каталог демо-данными (make seed COUNT=20000)
 make down
 ```
 
@@ -42,6 +43,8 @@ make down
 | RabbitMQ UI | http://localhost:15672 (пользователь `forsunki`, пароль в `deploy/secrets/dev/rabbitmq_password`) |
 | API (Swagger) | http://localhost:8001/docs |
 | PostgreSQL | localhost:5433 (порт меняется через `POSTGRES_PUBLISH_PORT` в `.env`) |
+| Админка каталога | http://localhost:8001/admin (вход под пользователем с ролью admin) |
+| Консоль S3-хранилища | http://localhost:9001 (ключи в `deploy/secrets/dev/s3_*`) |
 | Adminer | http://localhost:8080 |
 | Mailpit | http://localhost:8025 |
 
@@ -52,7 +55,7 @@ make down
 
 ## Статус
 
-Этапы 0 (каркас), 1 (инфраструктурное ядро `api`) и 2 (пользователи и авторизация) готовы. Следующий: этап 3, каталог и Redis-кэш.
+Этапы 0 (каркас), 1 (ядро `api`), 2 (пользователи и авторизация) и 3 (каталог и Redis-кэш) готовы. Следующий: этап 4, обмен сообщениями и outbox.
 
 ## Этап 2: авторизация
 
@@ -78,3 +81,38 @@ make down
 | Миграции | отдельный контейнер `migrate` (`make migrate`), `upgrade` и `downgrade` проверены тестом |
 
 Тесты ядра идут на настоящих Postgres, Redis и RabbitMQ (Testcontainers), `make test`. Подробности в [docs/PLAN.md](docs/PLAN.md).
+
+## Этап 3: каталог
+
+| Метод и путь | Назначение |
+|---|---|
+| `GET /catalog/injectors` | список: фильтры `manufacturer`, `type`, `condition`, поиск `q` (артикул или двигатель), курсор `cursor`, `limit` до 100 |
+| `GET /catalog/injectors/{id}` | карточка с применимостью к двигателям |
+| `GET /catalog/manufacturers` | производители для фильтра |
+| `PUT /catalog/injectors/{id}/image` | загрузка картинки (только admin) |
+| `/admin` | админка (SQLAdmin): производители, двигатели, форсунки |
+
+Заголовок ответа `X-Cache: HIT` или `MISS` показывает, откуда пришёл ответ. Решения: [ADR 0005](docs/adr/0005-katalog-poisk-i-kesh.md) (поиск, пагинация, кэш) и [ADR 0006](docs/adr/0006-s3-hranilishche-rustfs.md) (картинки и RustFS вместо MinIO).
+
+### Индексы: `EXPLAIN ANALYZE` (18 529 форсунок)
+
+Поиск редкого артикула (`oem_normalized LIKE '%0414720001%' ORDER BY id LIMIT 21`):
+
+| | План | Время |
+|---|---|---|
+| без триграммного индекса | `Seq Scan on injectors` (отброшено 18 527 строк) | 7,99 мс |
+| с GIN-индексом `gin_trgm_ops` | `Bitmap Index Scan on ix_injectors_oem_normalized_trgm` | 0,47 мс |
+
+Выигрыш в 17 раз. Для частого префикса (`%0445110%`, совпадает каждая десятая форсунка) планировщик правильно идёт по первичному ключу и останавливается после 21 совпадения (0,24 мс): индекс помогает там, где совпадений мало. Поиск по двигателю использует `engines` (38 строк) и `injector_engines` (44 880 связей) и выполняется за 0,41 мс.
+
+### Замер кэша (`make bench`, 200 запросов на сценарий, мс p50 / p95)
+
+| Сценарий | Без кэша | С кэшем | Ускорение |
+|---|---|---|---|
+| список, 20 шт. | 9,8 / 11,7 | 3,7 / 4,7 | 2,6x |
+| фильтр bosch + new | 9,9 / 11,9 | 4,0 / 5,1 | 2,5x |
+| поиск по артикулу | 12,3 / 19,2 | 3,7 / 4,6 | 3,3x |
+| поиск по двигателю | 11,8 / 13,3 | 3,8 / 4,7 | 3,1x |
+| карточка товара | 7,9 / 9,5 | 3,8 / 5,7 | 2,1x |
+
+Измерено последовательными запросами с той же машины, где работает БД, поэтому разница скромная (около 4 мс из любого ответа уходит на HTTP и сериализацию). Под нагрузкой с конкурентными запросами выигрыш больше; замер с Locust будет на этапе 11.

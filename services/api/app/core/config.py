@@ -47,6 +47,25 @@ class Settings(BaseSettings):
     access_token_ttl_minutes: int = 15
     refresh_token_ttl_days: int = 30
 
+    # S3-совместимое хранилище (RustFS в dev). Ключи доступа - секреты (файлы s3_access_key/s3_secret_key).
+    s3_endpoint_url: str = "http://s3:9000"  # адрес для сервера (внутри сети Docker)
+    # Адрес для БРАУЗЕРА: presigned-ссылка подписывается под тем хостом, по которому её откроют.
+    s3_public_endpoint_url: str = "http://localhost:9000"
+    s3_bucket: str = "forsunki-images"
+    s3_region: str = "us-east-1"
+    s3_access_key: SecretStr
+    s3_secret_key: SecretStr
+    s3_create_bucket: bool = (
+        True  # создавать бакет при старте (dev/test); в prod его создаёт администратор
+    )
+    image_url_ttl_seconds: int = 3600
+    image_max_bytes: int = 2 * 1024 * 1024
+
+    # Кэш каталога (Redis). TTL с «разбросом» (jitter), чтобы ключи не истекали одновременно.
+    cache_card_ttl_seconds: int = 600
+    cache_list_ttl_seconds: int = 120
+    cache_lock_ttl_seconds: int = 10
+
     # Rate limiting (Redis). Окна в секундах.
     register_ip_limit: int = 5
     register_window_seconds: int = 3600

@@ -39,7 +39,7 @@ def test_upgrade_downgrade_upgrade(tmp_path: Path) -> None:
         cfg.attributes["settings"] = settings
 
         command.upgrade(cfg, "head")
-        assert asyncio.run(_current_revision(settings)) == "0002"
+        assert asyncio.run(_current_revision(settings)) == "0003"
         # Модели и миграции не расходятся: autogenerate не находит отличий.
         command.check(cfg)
 
@@ -48,4 +48,4 @@ def test_upgrade_downgrade_upgrade(tmp_path: Path) -> None:
         assert asyncio.run(_current_revision(settings)) is None
 
         command.upgrade(cfg, "head")  # повторное применение после отката
-        assert asyncio.run(_current_revision(settings)) == "0002"
+        assert asyncio.run(_current_revision(settings)) == "0003"

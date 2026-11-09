@@ -37,11 +37,15 @@ def _env(settings: Settings) -> dict[str, str]:
         "RABBITMQ_PORT": str(settings.rabbitmq_port),
         "RABBITMQ_PASSWORD": settings.rabbitmq_password.get_secret_value(),
         "JWT_SECRET": settings.jwt_secret.get_secret_value(),
+        "S3_ENDPOINT_URL": settings.s3_endpoint_url,
+        "S3_PUBLIC_ENDPOINT_URL": settings.s3_public_endpoint_url,
+        "S3_ACCESS_KEY": settings.s3_access_key.get_secret_value(),
+        "S3_SECRET_KEY": settings.s3_secret_key.get_secret_value(),
     }
 
 
 async def _wait_until_live(client: httpx.AsyncClient, proc: "subprocess.Popen[str]") -> None:
-    for _ in range(100):
+    for _ in range(300):  # до 60 с: холодный старт (чтение библиотек с диска) бывает долгим
         if proc.poll() is not None:
             raise AssertionError("uvicorn завершился при старте")
         try:

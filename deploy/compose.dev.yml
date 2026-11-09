@@ -1,5 +1,8 @@
 # Только для разработки: проброс портов на localhost и вспомогательные инструменты.
 # Сеть `data` внутренняя и порты через неё не публикуются, поэтому подключаем `dev`.
+volumes:
+  s3_data: {}
+
 networks:
   dev: {}
 
@@ -22,39 +25,45 @@ services:
   api:
     networks: [backend, data, dev]
     ports: ["127.0.0.1:8001:8000"]   # документация: http://localhost:8001/docs
-
-  adminer:
-    image: adminer:4.8.1
-    restart: unless-stopped
-    environment:
-      ADMINER_DEFAULT_SERVER: postgres
     depends_on:
-      postgres: {condition: service_healthy}
-    networks: [data, dev]
-    ports: ["127.0.0.1:8080:8080"]
-    deploy:
-      resources:
-        limits: {cpus: "0.25", memory: 128M}
-    logging:
-      driver: json-file
-      options: {max-size: "10m", max-file: "3"}
+      s3: {condition: service_healthy}
 
-  # Принимает письма вместо реальной отправки (SMTP :1025, интерфейс :8025).
-  mailpit:
-    image: axllent/mailpit:v1.21.8
+
+  # S3-совместимое хранилище (картинки товаров, позже архив логов). Официальные образы MinIO сняты с
+  # публикации, поэтому используется RustFS (Apache 2.0, тот же S3 API и веб-консоль).
+  # Ключи доступа берём из файлов секретов (общих с api): образ их напрямую не читает, поэтому
+  # экспортируем в переменные окружения внутри контейнера перед запуском.
+  s3:
+    image: rustfs/rustfs:1.0.4
     restart: unless-stopped
-    networks: [backend, dev]
+    init: true
+    entrypoint:
+      - sh
+      - -c
+      - |
+        export RUSTFS_ACCESS_KEY="$$(cat /run/secrets/s3_access_key)"
+        export RUSTFS_SECRET_KEY="$$(cat /run/secrets/s3_secret_key)"
+        exec /entrypoint.sh rustfs
+    environment:
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
+    secrets: [s3_access_key, s3_secret_key]
+    volumes:
+      - s3_data:/data
+    networks: [data, dev]
     ports:
-      - "127.0.0.1:8025:8025"
-      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:9000:9000"   # S3 API (по этому адресу браузер открывает картинки)
+      - "127.0.0.1:9001:9001"   # веб-консоль
     healthcheck:
-      test: ["CMD", "/mailpit", "readyz"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/health || exit 1"]
       interval: 10s
-      timeout: 3s
-      retries: 5
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     deploy:
       resources:
-        limits: {cpus: "0.25", memory: 128M}
+        limits: {cpus: "0.5", memory: 512M}
     logging:
       driver: json-file
       options: {max-size: "10m", max-file: "3"}
