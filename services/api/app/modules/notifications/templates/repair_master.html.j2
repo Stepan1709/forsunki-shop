@@ -1,0 +1,12 @@
+{% extends "_base.html.j2" %}
+{% block content %}
+<p><b>Новая заявка на ремонт № {{ number }}</b></p>
+<table role="presentation" cellpadding="4" cellspacing="0" style="font-size:15px">
+  <tr><td style="color:#6b7280">Имя</td><td>{{ name }}</td></tr>
+  <tr><td style="color:#6b7280">Телефон</td><td>{{ phone or "не указан" }}</td></tr>
+  <tr><td style="color:#6b7280">Email</td><td>{{ email or "не указан" }}</td></tr>
+  <tr><td style="color:#6b7280">Автомобиль</td><td>{{ vehicle }}</td></tr>
+  <tr><td style="color:#6b7280">Форсунка</td><td>{{ injector or "не указана" }}</td></tr>
+</table>
+<p style="margin-top:16px"><b>Описание неисправности</b><br>{{ description }}</p>
+{% endblock %}

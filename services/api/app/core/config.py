@@ -94,6 +94,20 @@ class Settings(BaseSettings):
     expiry_sweep_interval_seconds: float = 60.0
     expiry_sweep_grace_seconds: float = 30.0
 
+    # Письма. В dev SMTP-сервер это Mailpit (принимает письма и показывает их в веб-интерфейсе, наружу не шлёт).
+    smtp_host: str = "mailpit"
+    smtp_port: int = 1025
+    smtp_timeout_seconds: float = 10.0
+    mail_from: str = "Forsunki <noreply@forsunki.local>"
+    # Кому приходят заявки на ремонт (мастеру/администратору).
+    repair_notify_email: str = "repair@forsunki.local"
+    # Адрес сайта для ссылок в письмах.
+    shop_base_url: str = "http://localhost:8000"
+
+    # Заявки на ремонт: не больше N с одного IP за окно (защита от спама).
+    repair_ip_limit: int = 5
+    repair_window_seconds: int = 3600
+
     # Rate limiting (Redis). Окна в секундах.
     register_ip_limit: int = 5
     register_window_seconds: int = 3600

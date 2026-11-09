@@ -35,6 +35,13 @@ services:
       s3: {condition: service_healthy}
       payment_stub: {condition: service_healthy}
 
+  # Воркер шлёт письма в Mailpit: он принимает их вместо реальной отправки.
+  worker:
+    environment:
+      SMTP_HOST: mailpit
+    depends_on:
+      mailpit: {condition: service_healthy}
+
 
   # S3-совместимое хранилище (картинки товаров, позже архив логов). Официальные образы MinIO сняты с
   # публикации, поэтому используется RustFS (Apache 2.0, тот же S3 API и веб-консоль).
@@ -71,6 +78,42 @@ services:
     deploy:
       resources:
         limits: {cpus: "0.5", memory: 512M}
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+  adminer:
+    image: adminer:4.8.1
+    restart: unless-stopped
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    depends_on:
+      postgres: {condition: service_healthy}
+    networks: [data, dev]
+    ports: ["127.0.0.1:8080:8080"]
+    deploy:
+      resources:
+        limits: {cpus: "0.25", memory: 128M}
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+  # Принимает письма вместо реальной отправки (SMTP :1025, интерфейс :8025).
+  mailpit:
+    image: axllent/mailpit:v1.21.8
+    restart: unless-stopped
+    networks: [backend, dev]
+    ports:
+      - "127.0.0.1:8025:8025"
+      - "127.0.0.1:1025:1025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits: {cpus: "0.25", memory: 128M}
     logging:
       driver: json-file
       options: {max-size: "10m", max-file: "3"}
