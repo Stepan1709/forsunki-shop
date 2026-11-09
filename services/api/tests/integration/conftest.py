@@ -1,6 +1,7 @@
 """Реальные Postgres, Redis и RabbitMQ в контейнерах (Testcontainers), без моков."""
 
 import time
+import uuid
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
@@ -258,3 +259,21 @@ async def publisher(amqp: AbstractRobustConnection) -> AsyncIterator[Publisher]:
     opened = await Publisher.open(amqp)
     yield opened
     await opened.close()
+
+
+# --- Пользователи без прохождения регистрации (она ограничена rate limit'ом по IP) ---
+
+
+async def create_user(
+    app: FastAPI, email: str, role: str = "customer"
+) -> tuple["uuid.UUID", dict[str, str]]:
+    """Создаёт пользователя напрямую в БД и выпускает ему access-токен."""
+    from app.core.security import create_access_token
+    from app.modules.users.models import User, UserRole
+
+    async with app.state.resources.session_factory() as session:
+        user = User(email=email, password_hash="not-used-in-these-tests", role=UserRole(role))
+        session.add(user)
+        await session.commit()
+    token = create_access_token(user.id, role, app.state.settings)
+    return user.id, {"Authorization": f"Bearer {token}"}

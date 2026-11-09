@@ -8,7 +8,7 @@ from aio_pika import Message
 from aio_pika.abc import AbstractChannel, AbstractExchange, AbstractRobustConnection
 from aio_pika.exceptions import AMQPError, DeliveryError, PublishError
 
-from app.core.messaging.errors import PublishFailed
+from app.core.messaging.errors import PublishFailed, Unroutable
 from app.core.messaging.message import build_message
 from app.core.messaging.topology import declare_exchanges
 
@@ -68,6 +68,9 @@ class Publisher:
     ) -> None:
         try:
             await exchange.publish(message, routing_key=routing_key, mandatory=True)
-        except (DeliveryError, PublishError, AMQPError) as exc:
+        except PublishError as exc:
+            log.error("publish_unroutable", routing_key=routing_key)
+            raise Unroutable(f"у события {routing_key} нет получателя") from exc
+        except (DeliveryError, AMQPError) as exc:
             log.error("publish_failed", routing_key=routing_key, error=type(exc).__name__)
             raise PublishFailed(f"не удалось опубликовать {routing_key}: {exc}") from exc

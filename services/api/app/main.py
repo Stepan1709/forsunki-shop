@@ -7,7 +7,9 @@ from app.core.correlation import CorrelationIdMiddleware
 from app.core.errors import install_error_handlers
 from app.core.lifespan import resources_lifespan
 from app.core.logging import configure_logging
+from app.modules.cart.router import router as cart_router
 from app.modules.catalog.router import router as catalog_router
+from app.modules.orders.router import router as orders_router
 from app.modules.users.router import auth_router, users_router
 
 
@@ -32,6 +34,8 @@ def create_app(
     app.include_router(auth_router)
     app.include_router(users_router)
     app.include_router(catalog_router)
+    app.include_router(cart_router)
+    app.include_router(orders_router)
     if settings.env != "prod":
         app.include_router(debug.router)
     return app
