@@ -6,7 +6,10 @@ from pathlib import Path
 import httpx
 import pytest
 import pytest_asyncio
+from alembic import command
+from alembic.config import Config
 from fastapi import FastAPI
+from sqlalchemy import text
 from testcontainers.community.postgres import PostgresContainer
 from testcontainers.community.rabbitmq import RabbitMqContainer
 from testcontainers.community.redis import RedisContainer
@@ -15,6 +18,7 @@ from app.core.config import Settings
 from app.main import create_app
 from tests.helpers import make_settings
 
+API_ROOT = Path(__file__).resolve().parents[2]
 PG_IMAGE = "postgres:16.6-alpine"
 REDIS_IMAGE = "redis:7.4.1-alpine"
 RABBIT_IMAGE = "rabbitmq:4.0.4-management-alpine"
@@ -58,11 +62,25 @@ def infra_settings(
     )
 
 
+@pytest.fixture(scope="session")
+def migrated_db(infra_settings: Settings) -> None:
+    """Схема БД создаётся теми же миграциями, что и в проде (а не create_all по моделям)."""
+    cfg = Config(str(API_ROOT / "alembic.ini"))
+    cfg.attributes["settings"] = infra_settings
+    command.upgrade(cfg, "head")
+
+
 @pytest_asyncio.fixture
-async def app(infra_settings: Settings) -> AsyncIterator[FastAPI]:
+async def app(infra_settings: Settings, migrated_db: None) -> AsyncIterator[FastAPI]:
     application = create_app(infra_settings)
     # Запускаем lifespan вручную: ASGITransport сам startup/shutdown не выполняет.
     async with application.router.lifespan_context(application):
+        # Чистое состояние для каждого теста: счётчики rate limit и таблицы не должны
+        # влиять друг на друга.
+        resources = application.state.resources
+        await resources.redis.flushdb()
+        async with resources.engine.begin() as conn:
+            await conn.execute(text("TRUNCATE users, refresh_tokens CASCADE"))
         yield application
 
 

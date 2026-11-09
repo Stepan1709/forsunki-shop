@@ -21,11 +21,45 @@ class AppError(Exception):
 
     status_code = 400
 
-    def __init__(self, detail: str, *, status_code: int | None = None) -> None:
+    def __init__(
+        self,
+        detail: str,
+        *,
+        status_code: int | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> None:
         super().__init__(detail)
         self.detail = detail
+        self.headers = headers
         if status_code is not None:
             self.status_code = status_code
+
+
+class UnauthorizedError(AppError):
+    status_code = 401
+
+    def __init__(self, detail: str = "Требуется авторизация") -> None:
+        super().__init__(detail, headers={"WWW-Authenticate": "Bearer"})
+
+
+class ForbiddenError(AppError):
+    status_code = 403
+
+    def __init__(self, detail: str = "Недостаточно прав") -> None:
+        super().__init__(detail)
+
+
+class ConflictError(AppError):
+    status_code = 409
+
+
+class TooManyRequestsError(AppError):
+    status_code = 429
+
+    def __init__(self, retry_after: int) -> None:
+        super().__init__(
+            "Слишком много попыток, повторите позже", headers={"Retry-After": str(retry_after)}
+        )
 
 
 def problem_response(
@@ -69,7 +103,7 @@ async def _validation_error(_request: Request, exc: Exception) -> JSONResponse:
 
 async def _app_error(_request: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, AppError)
-    return problem_response(exc.status_code, exc.detail)
+    return problem_response(exc.status_code, exc.detail, headers=exc.headers)
 
 
 async def _unhandled(_request: Request, exc: Exception) -> JSONResponse:

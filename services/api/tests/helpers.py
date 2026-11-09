@@ -10,6 +10,7 @@ def make_settings(secrets_dir: Path, **overrides: Any) -> Settings:
         "postgres_password": "test-pg",
         "redis_password": "test-redis",
         "rabbitmq_password": "test-mq",
+        "jwt_secret": "t" * 40,
         "env": "test",
         **overrides,
     }

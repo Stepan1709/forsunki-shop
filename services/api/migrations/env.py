@@ -7,6 +7,7 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from app import models  # noqa: F401  (регистрирует модели в Base.metadata)
 from app.core.config import Settings
 from app.core.db import Base
 from app.core.logging import configure_logging

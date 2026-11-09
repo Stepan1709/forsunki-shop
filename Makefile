@@ -2,10 +2,10 @@
 SHELL := /bin/bash
 COMPOSE := docker compose --env-file .env -f deploy/compose.yml -f deploy/compose.dev.yml
 SERVICES := api web payment_stub
-SECRETS := postgres_password redis_password rabbitmq_password
+SECRETS := postgres_password redis_password rabbitmq_password jwt_secret
 
 .DEFAULT_GOAL := help
-.PHONY: help env secrets up up-full down logs migrate test e2e lint fmt
+.PHONY: help env secrets up up-full down logs migrate test e2e lint fmt create-admin
 
 help: ## Список команд
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -57,3 +57,7 @@ lint: ## ruff + mypy
 
 fmt: ## ruff format
 	@for s in $(SERVICES); do (cd services/$$s && uv run ruff check --fix . && uv run ruff format .); done
+
+create-admin: ## Создать администратора: make create-admin EMAIL=you@example.com
+	@test -n "$(EMAIL)" || { echo "укажите EMAIL=..."; exit 1; }
+	$(COMPOSE) run --rm migrate python -m app.cli create-admin --email $(EMAIL)
