@@ -8,7 +8,7 @@
 from typing import Literal
 from urllib.parse import quote
 
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -41,6 +41,27 @@ class Settings(BaseSettings):
     rabbitmq_port: int = 5672
     rabbitmq_user: str = "forsunki"
     rabbitmq_password: SecretStr
+
+    # Подпись JWT. Короткий секрет легко подобрать, поэтому длину проверяем при старте.
+    jwt_secret: SecretStr
+    access_token_ttl_minutes: int = 15
+    refresh_token_ttl_days: int = 30
+
+    # Rate limiting (Redis). Окна в секундах.
+    register_ip_limit: int = 5
+    register_window_seconds: int = 3600
+    login_ip_limit: int = 30
+    login_ip_window_seconds: int = 60
+    # Считаются только неудачные попытки входа для конкретного email.
+    login_email_fail_limit: int = 5
+    login_email_window_seconds: int = 900
+
+    @field_validator("jwt_secret")
+    @classmethod
+    def _jwt_secret_is_long_enough(cls, value: SecretStr) -> SecretStr:
+        if len(value.get_secret_value()) < 32:
+            raise ValueError("jwt_secret должен быть не короче 32 символов")
+        return value
 
     # Пароли кодируем: спецсимволы в пароле иначе сломали бы разбор URL.
     @property

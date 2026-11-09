@@ -36,6 +36,7 @@ def _env(settings: Settings) -> dict[str, str]:
         "RABBITMQ_HOST": settings.rabbitmq_host,
         "RABBITMQ_PORT": str(settings.rabbitmq_port),
         "RABBITMQ_PASSWORD": settings.rabbitmq_password.get_secret_value(),
+        "JWT_SECRET": settings.jwt_secret.get_secret_value(),
     }
 
 

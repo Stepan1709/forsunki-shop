@@ -11,6 +11,7 @@ def secrets_dir(tmp_path: Path) -> Path:
     (tmp_path / "postgres_password").write_text("pg/pass+1\n")
     (tmp_path / "redis_password").write_text("redis-pass")
     (tmp_path / "rabbitmq_password").write_text("mq-pass")
+    (tmp_path / "jwt_secret").write_text("j" * 40)
     return tmp_path
 
 
@@ -39,3 +40,10 @@ def test_secret_is_not_leaked_in_repr(secrets_dir: Path) -> None:
 def test_missing_secret_fails_fast(tmp_path: Path) -> None:
     with pytest.raises(ValidationError):
         Settings(_secrets_dir=tmp_path)  # type: ignore[call-arg]
+
+
+def test_short_jwt_secret_is_rejected(secrets_dir: Path) -> None:
+    (secrets_dir / "jwt_secret").write_text("too-short")
+
+    with pytest.raises(ValidationError):
+        Settings(_secrets_dir=secrets_dir)  # type: ignore[call-arg]
