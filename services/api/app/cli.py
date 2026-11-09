@@ -15,8 +15,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.cache import Cache
 from app.core.config import Settings
-from app.core.events import LoggingEventSink
 from app.core.logging import configure_logging
+from app.core.outbox import OutboxEventSink
 from app.core.ratelimit import RateLimiter
 from app.modules.catalog.models import Injector
 from app.modules.users.models import UserRole
@@ -30,7 +30,7 @@ async def create_admin(settings: Settings, email: str, password: str) -> None:
     redis = Redis.from_url(settings.redis_url, decode_responses=True)
     try:
         async with async_sessionmaker(engine)() as session:
-            service = AuthService(session, settings, RateLimiter(redis), LoggingEventSink())
+            service = AuthService(session, settings, RateLimiter(redis), OutboxEventSink(session))
             await service.create_user(email.strip().lower(), password, UserRole.ADMIN)
     finally:
         await redis.aclose()

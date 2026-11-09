@@ -4,9 +4,11 @@ import time
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
+import aio_pika
 import httpx
 import pytest
 import pytest_asyncio
+from aio_pika.abc import AbstractChannel, AbstractRobustConnection
 from alembic import command
 from alembic.config import Config
 from fastapi import FastAPI
@@ -17,6 +19,7 @@ from testcontainers.community.redis import RedisContainer
 from testcontainers.core.container import DockerContainer
 
 from app.core.config import Settings
+from app.core.messaging.publisher import Publisher
 from app.main import create_app
 from tests.helpers import make_settings
 
@@ -114,7 +117,7 @@ async def app(infra_settings: Settings, migrated_db: None) -> AsyncIterator[Fast
             await conn.execute(
                 text(
                     "TRUNCATE users, refresh_tokens, injector_engines, injectors, engines,"
-                    " manufacturers RESTART IDENTITY CASCADE"
+                    " manufacturers, outbox, processed_messages RESTART IDENTITY CASCADE"
                 )
             )
         yield application
@@ -231,3 +234,27 @@ async def catalog(app: FastAPI) -> dict[str, int]:
             "bosch_pd": bosch_pd.id,
             "hidden": hidden.id,
         }
+
+
+# --- Брокер для тестов обмена сообщениями ---
+
+
+@pytest_asyncio.fixture
+async def amqp(infra_settings: Settings) -> AsyncIterator[AbstractRobustConnection]:
+    connection = await aio_pika.connect_robust(infra_settings.rabbitmq_url)
+    yield connection
+    await connection.close()
+
+
+@pytest_asyncio.fixture
+async def channel(amqp: AbstractRobustConnection) -> AsyncIterator[AbstractChannel]:
+    ch = await amqp.channel()
+    yield ch
+    await ch.close()
+
+
+@pytest_asyncio.fixture
+async def publisher(amqp: AbstractRobustConnection) -> AsyncIterator[Publisher]:
+    opened = await Publisher.open(amqp)
+    yield opened
+    await opened.close()

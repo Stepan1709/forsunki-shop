@@ -171,3 +171,36 @@ services:
       resources:
         limits: {cpus: "1.0", memory: 512M}
     logging: *default-logging
+
+  # Воркер: тот же образ, что и api, другая команда. Consumer'ы RabbitMQ и relay outbox.
+  worker:
+    <<: *api-build
+    command: ["python", "-m", "app.worker"]
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s   # больше, чем worker_shutdown_timeout_seconds (25 с)
+    environment:
+      <<: *api-env
+      SERVICE_NAME: worker   # поле service в логах воркера
+    secrets: [postgres_password, redis_password, rabbitmq_password, jwt_secret, s3_access_key, s3_secret_key]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      postgres: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
+    networks: [backend, data]
+    tmpfs: [/tmp]            # здесь воркер пишет файл-«пульс»; остальная файловая система может быть read-only
+    healthcheck:
+      # Воркер не слушает порт, поэтому о его здоровье говорит свежесть файла, который он обновляет каждые 5 с.
+      test:
+        - CMD
+        - python
+        - -c
+        - "import os,sys,time; sys.exit(0 if time.time() - os.path.getmtime('/tmp/worker-alive') < 30 else 1)"
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits: {cpus: "1.0", memory: 512M}
+    logging: *default-logging
