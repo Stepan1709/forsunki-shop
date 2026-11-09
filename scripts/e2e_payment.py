@@ -1,7 +1,7 @@
 """Сквозной сценарий на запущенном стеке (`make up`): регистрация, корзина, заказ, оплата в заглушке, проверка статусов.
 
 Запуск: `make e2e`. Проходит по HTTP тот же путь, что и покупатель, и проверяет итог на каждом шаге.
-Сценарии: успешная оплата (с повтором webhook'а провайдером) и отказ платежа (товар возвращается на склад).
+Сценарии: успешная оплата (с повтором webhook'а провайдером и письмом покупателю) и отказ платежа (товар возвращается на склад).
 """
 
 import sys
@@ -13,6 +13,7 @@ import httpx
 
 API = "http://localhost:8001"
 STUB = "http://localhost:8002"
+MAILPIT = "http://localhost:8025"
 PASSWORD = "e2e-pass-12345"  # noqa: S105  (тестовый пароль одноразового пользователя)
 SECRETS = Path(__file__).resolve().parent.parent / "deploy" / "secrets" / "dev"
 
@@ -118,6 +119,19 @@ def main() -> None:
     if get_order(order["id"])["status"] != "PAID" or stock() != before - 2:
         fail("повторный webhook изменил состояние")
     step("повторный webhook провайдера учтён один раз (дубль отсечён)")
+
+    def mails_to(address: str) -> list[dict]:
+        found = client.get(f"{MAILPIT}/api/v1/messages").json()["messages"]
+        return [m for m in found if any(t["Address"] == address for t in m["To"])]
+
+    paid_mail = wait_for(
+        "письмо об оплате в Mailpit",
+        lambda: [m for m in mails_to(email) if "оплачен" in m["Subject"]],
+    )
+    time.sleep(1)  # возможное второе письмо должно успеть прийти
+    if len([m for m in mails_to(email) if "оплачен" in m["Subject"]]) != len(paid_mail):
+        fail("письмо об оплате отправлено больше одного раза")
+    step("покупателю пришло одно письмо об оплате (Mailpit)")
 
     # --- Сценарий 2: отказ платежа ---
     print("Сценарий 2: отказ платежа")

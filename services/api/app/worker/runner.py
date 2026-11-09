@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.config import Settings
 from app.core.logging import configure_logging
+from app.core.mail import SmtpMailer
 from app.core.messaging.consumer import Consumer, Subscription
 from app.core.messaging.publisher import Publisher
 from app.core.messaging.topology import DelayQueueSpec, declare_delay_queue, declare_exchanges
@@ -77,7 +78,11 @@ class Worker:
 
             subscriptions = self._subscriptions
             if subscriptions is None:
-                subscriptions = build_subscriptions(s, build_gateway(s, http))
+                subscriptions = build_subscriptions(
+                    s,
+                    build_gateway(s, http),
+                    SmtpMailer(s.smtp_host, s.smtp_port, s.smtp_timeout_seconds),
+                )
             delay_queues = self._delay_queues
             if delay_queues is None:
                 delay_queues = build_delay_queues(s)

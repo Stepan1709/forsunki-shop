@@ -1,35 +1,58 @@
 """Подписки воркера: какая очередь на какие события и каким обработчиком обслуживается."""
 
-import structlog
-
 from app.core.config import Settings
-from app.core.messaging.consumer import MessageContext, Subscription
+from app.core.mail import Mailer
+from app.core.messaging.consumer import Handler, Subscription
 from app.core.messaging.topology import DelayQueueSpec, QueueSpec
 from app.modules.orders.service import EXPIRE_DELAY_KEY
 from app.modules.payments.gateway import PaymentGateway
+from app.worker.notification_handlers import (
+    make_order_mail_handler,
+    make_repair_mail_handler,
+    make_welcome_handler,
+)
 from app.worker.payment_handlers import make_create_payment_handler, make_expire_order_handler
-
-log = structlog.get_logger("subscriptions")
 
 EXPIRE_KEY = "order.expire"  # ключ, под которым сообщение возвращается из очереди с задержкой
 
 
-async def handle_user_registered(ctx: MessageContext) -> None:
-    """Заглушка: позже здесь появится отправка приветственного письма."""
-    log.info("user_registered_received", user_id=ctx.data.get("user_id"))
-
-
-def build_subscriptions(settings: Settings, gateway: PaymentGateway) -> list[Subscription]:
+def build_subscriptions(
+    settings: Settings, gateway: PaymentGateway, mailer: Mailer
+) -> list[Subscription]:
     delays = tuple(settings.consumer_retry_delays_seconds)
+
+    def notification(name: str, key: str, handler: Handler) -> Subscription:
+        # Имя очереди: <подписчик>.<источник>_<событие>. У каждого письма своя очередь и свой inbox-ключ.
+        return Subscription(
+            spec=QueueSpec(name=name, routing_keys=(key,), retry_delays_seconds=delays),
+            handler=handler,
+        )
+
     return [
-        Subscription(
-            spec=QueueSpec(
-                # Имя очереди: <подписчик>.<источник>_<событие>.
-                name="notifications.user_registered",
-                routing_keys=("user.registered",),
-                retry_delays_seconds=delays,
-            ),
-            handler=handle_user_registered,
+        notification(
+            "notifications.user_registered",
+            "user.registered",
+            make_welcome_handler(settings, mailer),
+        ),
+        notification(
+            "notifications.order_paid",
+            "order.paid",
+            make_order_mail_handler(settings, mailer, paid=True),
+        ),
+        notification(
+            "notifications.order_expired",
+            "order.expired",
+            make_order_mail_handler(settings, mailer, paid=False),
+        ),
+        notification(
+            "notifications.repair_master",
+            "repair.requested",
+            make_repair_mail_handler(settings, mailer, to_master=True),
+        ),
+        notification(
+            "notifications.repair_customer",
+            "repair.requested",
+            make_repair_mail_handler(settings, mailer, to_master=False),
         ),
         Subscription(
             spec=QueueSpec(

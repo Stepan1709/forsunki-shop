@@ -4,7 +4,7 @@ import time
 import uuid
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import aio_pika
 import httpx
@@ -33,6 +33,7 @@ PG_IMAGE = "postgres:16.6-alpine"
 REDIS_IMAGE = "redis:7.4.1-alpine"
 RABBIT_IMAGE = "rabbitmq:4.0.4-management-alpine"
 S3_IMAGE = "rustfs/rustfs:1.0.4"
+MAILPIT_IMAGE = "axllent/mailpit:v1.21.8"
 
 
 @pytest.fixture(scope="session")
@@ -80,16 +81,36 @@ def s3_container() -> Iterator[DockerContainer]:
 
 
 @pytest.fixture(scope="session")
+def mailpit_container() -> Iterator[DockerContainer]:
+    """Настоящий SMTP-сервер, который складывает письма и отдаёт их по HTTP (так же, как в dev)."""
+    container = DockerContainer(MAILPIT_IMAGE).with_exposed_ports(1025, 8025)
+    with container:
+        url = f"http://{container.get_container_host_ip()}:{container.get_exposed_port(8025)}"
+        for _ in range(60):
+            try:
+                if httpx.get(f"{url}/readyz", timeout=1).status_code == 200:
+                    break
+            except httpx.TransportError:
+                time.sleep(0.5)
+        else:
+            raise RuntimeError("Mailpit не запустился")
+        yield container
+
+
+@pytest.fixture(scope="session")
 def infra_settings(
     secrets_dir: Path,
     postgres: PostgresContainer,
     redis_container: RedisContainer,
     rabbitmq: RabbitMqContainer,
     s3_container: DockerContainer,
+    mailpit_container: DockerContainer,
 ) -> Settings:
     s3_url = f"http://{s3_container.get_container_host_ip()}:{s3_container.get_exposed_port(9000)}"
     return make_settings(
         secrets_dir,
+        smtp_host=mailpit_container.get_container_host_ip(),
+        smtp_port=int(mailpit_container.get_exposed_port(1025)),
         s3_endpoint_url=s3_url,
         s3_public_endpoint_url=s3_url,
         postgres_host=postgres.get_container_host_ip(),
@@ -122,7 +143,7 @@ async def app(infra_settings: Settings, migrated_db: None) -> AsyncIterator[Fast
             await conn.execute(
                 text(
                     "TRUNCATE users, refresh_tokens, injector_engines, injectors, engines,"
-                    " manufacturers, outbox, processed_messages, provider_events RESTART IDENTITY CASCADE"
+                    " manufacturers, outbox, processed_messages, provider_events, repair_requests RESTART IDENTITY CASCADE"
                 )
             )
         yield application
@@ -289,3 +310,36 @@ async def harness(app: FastAPI, amqp: AbstractRobustConnection, publisher: Publi
     from tests.integration.test_messaging import Harness
 
     return Harness(app, amqp, publisher)
+
+
+# --- Почтовый ящик (Mailpit) ---
+
+
+class Mailbox:
+    """Читает письма, которые приняла настоящий SMTP-сервер Mailpit."""
+
+    def __init__(self, base_url: str) -> None:
+        self._http = httpx.Client(base_url=base_url, timeout=5)
+
+    def clear(self) -> None:
+        self._http.delete("/api/v1/messages")
+
+    def messages(self) -> list[dict[str, Any]]:
+        items: list[dict[str, Any]] = self._http.get("/api/v1/messages").json()["messages"]
+        return items
+
+    def full(self, message_id: str) -> dict[str, Any]:
+        body: dict[str, Any] = self._http.get(f"/api/v1/message/{message_id}").json()
+        return body
+
+    def to(self, address: str) -> list[dict[str, Any]]:
+        return [m for m in self.messages() if any(t["Address"] == address for t in m["To"])]
+
+
+@pytest.fixture
+def mailbox(mailpit_container: DockerContainer) -> Mailbox:
+    box = Mailbox(
+        f"http://{mailpit_container.get_container_host_ip()}:{mailpit_container.get_exposed_port(8025)}"
+    )
+    box.clear()
+    return box

@@ -1,0 +1,6 @@
+{% extends "_base.html.j2" %}
+{% block content %}
+<p>Здравствуйте!</p>
+<p>Заказ <b>№ {{ number }}</b> оплачен. Сумма: <b>{{ total }}</b>.<br>Мы начнём готовить его к отправке.</p>
+<p><a href="{{ shop_url }}/orders/{{ order_id }}" style="color:#e0762b">Статус заказа</a></p>
+{% endblock %}
