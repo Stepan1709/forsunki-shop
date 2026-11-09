@@ -19,6 +19,10 @@ services:
       - "127.0.0.1:5672:5672"
       - "127.0.0.1:15672:15672"   # веб-интерфейс
 
+  api:
+    networks: [backend, data, dev]
+    ports: ["127.0.0.1:8001:8000"]   # документация: http://localhost:8001/docs
+
   adminer:
     image: adminer:4.8.1
     restart: unless-stopped

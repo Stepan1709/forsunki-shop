@@ -27,7 +27,7 @@ secrets: ## Сгенерировать dev-секреты в deploy/secrets/dev 
 	# В prod права настраиваются на сервере, файлы лежат вне репозитория.
 
 up: env secrets ## Поднять ядро (postgres, redis, rabbitmq + dev-инструменты)
-	$(COMPOSE) up -d --wait
+	$(COMPOSE) up -d --build --wait
 
 up-full: up ## Ядро + логирование и метрики (профили появятся на этапах 9 и 10)
 	$(COMPOSE) --profile logging --profile monitoring up -d --wait
@@ -38,8 +38,8 @@ down: ## Остановить
 logs: ## Логи всех контейнеров
 	$(COMPOSE) logs -f --tail=100
 
-migrate: ## Миграции (появятся на этапе 1)
-	@echo "миграций пока нет: Alembic добавляется на этапе 1"
+migrate: env secrets ## Применить миграции (одноразовый контейнер migrate)
+	$(COMPOSE) run --rm --build migrate
 
 test: ## Unit + интеграционные тесты всех сервисов
 	@for s in $(SERVICES); do \

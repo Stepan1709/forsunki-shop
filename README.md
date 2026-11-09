@@ -40,6 +40,7 @@ make down
 | Сервис | Адрес |
 |---|---|
 | RabbitMQ UI | http://localhost:15672 (пользователь `forsunki`, пароль в `deploy/secrets/dev/rabbitmq_password`) |
+| API (Swagger) | http://localhost:8001/docs |
 | PostgreSQL | localhost:5433 (порт меняется через `POSTGRES_PUBLISH_PORT` в `.env`) |
 | Adminer | http://localhost:8080 |
 | Mailpit | http://localhost:8025 |
@@ -51,4 +52,16 @@ make down
 
 ## Статус
 
-Этап 0 (каркас) готов. Следующий: этап 1, инфраструктурное ядро `api`. Подробности в [docs/PLAN.md](docs/PLAN.md).
+Этапы 0 (каркас) и 1 (инфраструктурное ядро `api`) готовы. Следующий: этап 2, пользователи и авторизация.
+
+## Этап 1: что проверено
+
+| Критерий | Результат |
+|---|---|
+| `docker stop api` во время запроса на 6 с | запрос завершился `200`, остановка 5 с, код выхода 143 |
+| `/health/ready` при остановленном Postgres | `503`, `checks.db = fail`; `/health/live` остаётся `200`; после возврата БД снова `200` |
+| Логи | JSON в stdout с `timestamp`, `level`, `service`, `env`, `event`, `correlation_id` |
+| Ошибки | единый формат Problem Details (`application/problem+json`) |
+| Миграции | отдельный контейнер `migrate` (`make migrate`), `upgrade` и `downgrade` проверены тестом |
+
+Тесты ядра идут на настоящих Postgres, Redis и RabbitMQ (Testcontainers), `make test`. Подробности в [docs/PLAN.md](docs/PLAN.md).

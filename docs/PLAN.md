@@ -40,7 +40,7 @@ Compose-профили: `core` (по умолчанию), `logging`, `monitoring
 
 **Готово, когда:** `make secrets && make up` поднимает Postgres, Redis, RabbitMQ; все healthchecks зелёные; в репозитории нет секретов; `make lint` и `make test` проходят локально.
 
-## Этап 1. Инфраструктурное ядро `api` ☐
+## Этап 1. Инфраструктурное ядро `api` ☑
 
 **Задачи**
 - FastAPI-приложение, pydantic-settings, `lifespan`: engine + sessionmaker, Redis-пул, соединение aio-pika, httpx-клиент. Доступ через `Depends`.

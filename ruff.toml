@@ -12,9 +12,20 @@ select = [
     "S",            # bandit: базовая безопасность
     "SIM", "C4", "RUF", "PT",
 ]
+ignore = [
+    "RUF001", "RUF002", "RUF003",  # «похожие» кириллические буквы: проект и комментарии на русском
+]
+
+[lint.flake8-bugbear]
+# Depends/Query в значениях по умолчанию аргументов: так устроен FastAPI.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
 
 [lint.per-file-ignores]
 "**/tests/**" = ["S101", "S105", "S106"]  # assert и тестовые «пароли» допустимы
+# Обработчики Starlette принимают Exception; assert сужает тип до ожидаемого.
+"**/app/core/errors.py" = ["S101"]
+# Тест запускает настоящий uvicorn подпроцессом и сам ждёт его завершения.
+"**/test_graceful_shutdown.py" = ["ASYNC210", "ASYNC220", "S603"]
 
 [lint.isort]
 known-first-party = ["app"]
