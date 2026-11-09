@@ -30,3 +30,6 @@ services/web/app/static/css/app.css
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Личные учебные материалы (подробные разборы этапов), в репозиторий не попадают
+learning/
