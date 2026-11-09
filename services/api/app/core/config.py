@@ -77,7 +77,22 @@ class Settings(BaseSettings):
     worker_heartbeat_path: str | None = "/tmp/worker-alive"  # noqa: S108  (файл-«пульс» для healthcheck)
 
     # Заказы: сколько минут даётся на оплату, затем резерв снимается (истечение заказа).
-    order_payment_ttl_minutes: int = 30
+    order_payment_ttl_minutes: int = 60
+
+    # Платёжный провайдер (по умолчанию заглушка payment_stub). Ключи и секрет подписи - из файлов секретов.
+    payment_provider: str = "stub"
+    payment_provider_url: str = "http://payment_stub:8000"
+    # Куда провайдер вернёт покупателя после оплаты; {order_id} подставляется автоматически.
+    payment_return_url: str = "http://localhost:8001/orders/{order_id}"
+    payment_api_key: SecretStr
+    payment_webhook_secret: SecretStr
+    payment_webhook_tolerance_seconds: int = (
+        300  # подписи старше этого срока отвергаются (защита от повторной подачи)
+    )
+    payment_request_timeout_seconds: float = 10.0
+    # Страховка истечения заказов: воркер раз в N секунд находит просроченные заказы, даже если сообщение потерялось.
+    expiry_sweep_interval_seconds: float = 60.0
+    expiry_sweep_grace_seconds: float = 30.0
 
     # Rate limiting (Redis). Окна в секундах.
     register_ip_limit: int = 5

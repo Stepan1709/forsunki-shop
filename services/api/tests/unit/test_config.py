@@ -14,6 +14,8 @@ def secrets_dir(tmp_path: Path) -> Path:
     (tmp_path / "jwt_secret").write_text("j" * 40)
     (tmp_path / "s3_access_key").write_text("a" * 12)
     (tmp_path / "s3_secret_key").write_text("s" * 24)
+    (tmp_path / "payment_api_key").write_text("p" * 32)
+    (tmp_path / "payment_webhook_secret").write_text("w" * 32)
     return tmp_path
 
 

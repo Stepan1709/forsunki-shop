@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Оплата заказа{% endblock %}
+{% block content %}
+<section class="card" aria-labelledby="title">
+  <div class="badge-test">Тестовый платёж: деньги не списываются</div>
+
+  {% if payment.status == "pending" %}
+    <h1 id="title">Оплата заказа</h1>
+    <p class="muted">{{ payment.description }}</p>
+  {% elif payment.status == "succeeded" %}
+    <div class="status ok" aria-hidden="true">✓</div>
+    <h1 id="title">Оплата прошла</h1>
+    <p class="muted">Спасибо! Магазин получил подтверждение.</p>
+  {% else %}
+    <div class="status fail" aria-hidden="true">✕</div>
+    <h1 id="title">Платёж отклонён</h1>
+    <p class="muted">Деньги не списаны. Заказ будет отменён, товар вернётся на склад.</p>
+  {% endif %}
+
+  <div class="amount">
+    <span class="amount-value">{{ payment.amount_kopecks | rub }}</span>
+    <span class="amount-cur">{% if payment.currency == "RUB" %}₽{% else %}{{ payment.currency }}{% endif %}</span>
+  </div>
+
+  <dl class="details">
+    <div><dt>Заказ</dt><dd>{{ payment.order_id[:8] }}</dd></div>
+    <div><dt>Платёж</dt><dd>{{ payment.id[:8] }}</dd></div>
+  </dl>
+
+  {% if payment.status == "pending" %}
+    <div class="actions">
+      <form method="post" action="/pay/{{ payment.id }}/confirm">
+        <button type="submit" class="btn primary">Оплатить</button>
+      </form>
+      <form method="post" action="/pay/{{ payment.id }}/decline">
+        <button type="submit" class="btn ghost">Отклонить</button>
+      </form>
+    </div>
+  {% else %}
+    <div class="actions single">
+      <a class="btn primary" href="{{ payment.return_url }}">Вернуться в магазин</a>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

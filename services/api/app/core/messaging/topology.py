@@ -96,3 +96,37 @@ async def declare_queue_set(
     # Возврат из яруса повтора приходит через dlx с ключом = имя очереди.
     await work.bind(dlx, routing_key=spec.name)
     return work
+
+
+@dataclass(frozen=True)
+class DelayQueueSpec:
+    """Очередь с задержкой без плагинов: у очереди фиксированный TTL, по истечении которого сообщение
+    dead-letter'ится обратно в обмен событий под другим ключом.
+
+        событие `bind_key` -> [очередь name, TTL] --срок вышел--> обмен событий, ключ `dead_letter_key` -> рабочая очередь
+
+    TTL одинаков для всех сообщений очереди, поэтому порядок выдачи совпадает с порядком поступления (иначе короткая
+    задержка ждала бы долгую). TTL нельзя изменить после объявления очереди.
+    """
+
+    name: str
+    bind_key: str
+    dead_letter_key: str
+    ttl_seconds: float
+
+
+async def declare_delay_queue(
+    channel: AbstractChannel, spec: DelayQueueSpec, events: AbstractExchange
+) -> AbstractQueue:
+    queue = await channel.declare_queue(
+        spec.name,
+        durable=True,
+        arguments={
+            **_QUORUM,
+            "x-message-ttl": int(spec.ttl_seconds * 1000),
+            "x-dead-letter-exchange": EVENTS_EXCHANGE,
+            "x-dead-letter-routing-key": spec.dead_letter_key,
+        },
+    )
+    await queue.bind(events, routing_key=spec.bind_key)
+    return queue

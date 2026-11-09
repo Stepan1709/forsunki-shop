@@ -62,3 +62,14 @@ class OrderRepository:
             .values(**values)
         )
         return bool(result.rowcount)  # type: ignore[attr-defined]
+
+    async def expired_pending_ids(self, before: datetime, limit: int) -> list[uuid.UUID]:
+        """id неоплаченных заказов со сроком оплаты раньше `before`. SKIP LOCKED: несколько воркеров не берут одно и то же."""
+        result = await self._session.execute(
+            select(Order.id)
+            .where(Order.status == OrderStatus.PENDING_PAYMENT, Order.expires_at < before)
+            .order_by(Order.expires_at)
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        )
+        return list(result.scalars())

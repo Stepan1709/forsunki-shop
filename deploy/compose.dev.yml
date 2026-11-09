@@ -22,11 +22,18 @@ services:
       - "127.0.0.1:5672:5672"
       - "127.0.0.1:15672:15672"   # веб-интерфейс
 
+  payment_stub:
+    networks: [backend, dev]
+    environment:
+      PUBLIC_BASE_URL: http://localhost:8002   # адрес страницы оплаты для браузера
+    ports: ["127.0.0.1:8002:8000"]
+
   api:
     networks: [backend, data, dev]
     ports: ["127.0.0.1:8001:8000"]   # документация: http://localhost:8001/docs
     depends_on:
       s3: {condition: service_healthy}
+      payment_stub: {condition: service_healthy}
 
 
   # S3-совместимое хранилище (картинки товаров, позже архив логов). Официальные образы MinIO сняты с

@@ -10,6 +10,8 @@
 | `rabbitmq_password` | RabbitMQ (`RABBITMQ_DEFAULT_PASS_FILE`), приложения |
 | `jwt_secret` | api (подпись JWT, не короче 32 символов) |
 | `s3_access_key`, `s3_secret_key` | S3-хранилища RustFS (root-пользователь) и api (доступ к хранилищу картинок) |
+| `payment_api_key` | api и воркер (доступ к платёжному провайдеру), payment_stub (проверка ключа) |
+| `payment_webhook_secret` | подпись webhook: payment_stub подписывает, api проверяет |
 
 В контейнере файл доступен как `/run/secrets/<имя>`. В prod файлы лежат на сервере вне репозитория
 (права 600), путь задаётся переменной `SECRETS_DIR`.

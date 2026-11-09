@@ -9,7 +9,6 @@ from typing import Any
 
 import aio_pika
 import pytest
-import pytest_asyncio
 from aio_pika import DeliveryMode, Message
 from aio_pika.abc import AbstractChannel, AbstractRobustConnection
 from fastapi import FastAPI
@@ -94,11 +93,6 @@ class Harness:
             yield consumer
         finally:
             await consumer.stop()
-
-
-@pytest_asyncio.fixture
-async def harness(app: FastAPI, amqp: AbstractRobustConnection, publisher: Publisher) -> Harness:
-    return Harness(app, amqp, publisher)
 
 
 async def send(

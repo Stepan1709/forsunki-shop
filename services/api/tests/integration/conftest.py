@@ -4,6 +4,7 @@ import time
 import uuid
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import aio_pika
 import httpx
@@ -23,6 +24,9 @@ from app.core.config import Settings
 from app.core.messaging.publisher import Publisher
 from app.main import create_app
 from tests.helpers import make_settings
+
+if TYPE_CHECKING:
+    from tests.integration.test_messaging import Harness
 
 API_ROOT = Path(__file__).resolve().parents[2]
 PG_IMAGE = "postgres:16.6-alpine"
@@ -118,7 +122,7 @@ async def app(infra_settings: Settings, migrated_db: None) -> AsyncIterator[Fast
             await conn.execute(
                 text(
                     "TRUNCATE users, refresh_tokens, injector_engines, injectors, engines,"
-                    " manufacturers, outbox, processed_messages RESTART IDENTITY CASCADE"
+                    " manufacturers, outbox, processed_messages, provider_events RESTART IDENTITY CASCADE"
                 )
             )
         yield application
@@ -277,3 +281,11 @@ async def create_user(
         await session.commit()
     token = create_access_token(user.id, role, app.state.settings)
     return user.id, {"Authorization": f"Bearer {token}"}
+
+
+@pytest_asyncio.fixture
+async def harness(app: FastAPI, amqp: AbstractRobustConnection, publisher: Publisher) -> "Harness":
+    """Запускатель consumer'ов с заданным обработчиком (используется тестами сообщений, платежей и истечения)."""
+    from tests.integration.test_messaging import Harness
+
+    return Harness(app, amqp, publisher)

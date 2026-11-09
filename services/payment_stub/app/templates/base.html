@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Оплата{% endblock %} · ForsunkiShop Pay</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="brand">
+      <span class="brand-mark" aria-hidden="true">F</span>
+      <span class="brand-name">ForsunkiShop <b>Pay</b></span>
+    </header>
+    {% block content %}{% endblock %}
+    <footer class="foot">Защищённое соединение · Платёжный шлюз ForsunkiShop</footer>
+  </main>
+</body>
+</html>

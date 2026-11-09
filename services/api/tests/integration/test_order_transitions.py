@@ -62,7 +62,10 @@ async def event_names(app: FastAPI) -> list[str]:
         return list(
             await session.scalars(
                 select(OutboxMessage.routing_key)
-                .where(OutboxMessage.routing_key.like("order.%"))
+                .where(
+                    OutboxMessage.routing_key.like("order.%"),
+                    OutboxMessage.routing_key != "order.expire.delay",
+                )
                 .order_by(OutboxMessage.created_at)
             )
         )
