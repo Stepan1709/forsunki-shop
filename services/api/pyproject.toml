@@ -5,15 +5,19 @@ description = "Бэкенд ForsunkiShop: модульный монолит (Fas
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "aio-pika>=9.4",
+    "aioboto3>=13",
     "alembic>=1.14",
     "argon2-cffi>=23.1",
     "asyncpg>=0.30",
     "fastapi>=0.115",
     "httpx>=0.28",
+    "itsdangerous>=2.2",
     "pydantic-settings>=2.6",
     "pydantic[email]>=2.9",
     "pyjwt>=2.9",
+    "python-multipart>=0.0.12",
     "redis>=5.2",
+    "sqladmin>=0.20",
     "sqlalchemy[asyncio]>=2.0.36",
     "structlog>=24.4",
     "uvicorn[standard]>=0.32",
@@ -26,7 +30,7 @@ dev = [
     "pytest-cov>=6.0",
     "mypy>=1.13",
     "ruff>=0.8",
-    "testcontainers[postgres,rabbitmq,redis]>=4.8",
+    "testcontainers[minio,postgres,rabbitmq,redis]>=4.8",
 ]
 
 [tool.pytest.ini_options]
@@ -46,3 +50,8 @@ source = ["app"]
 [tool.mypy]
 strict = true
 python_version = "3.12"
+
+# Библиотеки без аннотаций типов: mypy не должен падать на их импорте.
+[[tool.mypy.overrides]]
+module = ["aioboto3.*", "boto3.*", "botocore.*", "aiobotocore.*", "sqladmin.*", "wtforms.*"]
+ignore_missing_imports = true

@@ -12,6 +12,8 @@ def secrets_dir(tmp_path: Path) -> Path:
     (tmp_path / "redis_password").write_text("redis-pass")
     (tmp_path / "rabbitmq_password").write_text("mq-pass")
     (tmp_path / "jwt_secret").write_text("j" * 40)
+    (tmp_path / "s3_access_key").write_text("a" * 12)
+    (tmp_path / "s3_secret_key").write_text("s" * 24)
     return tmp_path
 
 

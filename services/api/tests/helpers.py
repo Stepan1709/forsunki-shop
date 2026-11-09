@@ -11,6 +11,8 @@ def make_settings(secrets_dir: Path, **overrides: Any) -> Settings:
         "redis_password": "test-redis",
         "rabbitmq_password": "test-mq",
         "jwt_secret": "t" * 40,
+        "s3_access_key": "a" * 12,
+        "s3_secret_key": "s" * 24,
         "env": "test",
         **overrides,
     }

@@ -8,8 +8,10 @@ from fastapi import Depends, Request
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.cache import Cache
 from app.core.config import Settings
 from app.core.lifespan import Resources
+from app.core.storage import ImageStorage
 
 
 def get_settings(request: Request) -> Settings:
@@ -33,3 +35,13 @@ def get_redis(resources: Resources = Depends(get_resources)) -> Redis:
 
 def get_http_client(resources: Resources = Depends(get_resources)) -> httpx.AsyncClient:
     return resources.http
+
+
+def get_cache(
+    redis: Redis = Depends(get_redis), settings: Settings = Depends(get_settings)
+) -> Cache:
+    return Cache(redis, settings.cache_lock_ttl_seconds)
+
+
+def get_storage(resources: Resources = Depends(get_resources)) -> ImageStorage:
+    return resources.storage

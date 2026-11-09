@@ -2,10 +2,10 @@
 SHELL := /bin/bash
 COMPOSE := docker compose --env-file .env -f deploy/compose.yml -f deploy/compose.dev.yml
 SERVICES := api web payment_stub
-SECRETS := postgres_password redis_password rabbitmq_password jwt_secret
+SECRETS := postgres_password redis_password rabbitmq_password jwt_secret s3_access_key s3_secret_key
 
 .DEFAULT_GOAL := help
-.PHONY: help env secrets up up-full down logs migrate test e2e lint fmt create-admin
+.PHONY: help env secrets up up-full down logs migrate test e2e lint fmt create-admin seed bench
 
 help: ## Список команд
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -61,3 +61,9 @@ fmt: ## ruff format
 create-admin: ## Создать администратора: make create-admin EMAIL=you@example.com
 	@test -n "$(EMAIL)" || { echo "укажите EMAIL=..."; exit 1; }
 	$(COMPOSE) run --rm migrate python -m app.cli create-admin --email $(EMAIL)
+
+seed: env secrets ## Заполнить каталог демо-данными: make seed COUNT=5000 (пересоздаёт каталог)
+	$(COMPOSE) run --rm migrate python -m app.cli seed --count $(or $(COUNT),5000) --reset
+
+bench: ## Замер каталога до/после кэша (api должен быть запущен и каталог заполнен)
+	cd services/api && uv run python ../../scripts/bench_catalog.py

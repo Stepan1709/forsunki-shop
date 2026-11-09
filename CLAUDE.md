@@ -139,7 +139,7 @@ Makefile  README.md  CLAUDE.md
 - structlog, JSON в stdout (12-factor). Обязательные поля: `timestamp`, `level`, `service`, `env`, `event`, `correlation_id`. По возможности `order_id`, `user_id`. Пароли, токены, персональные данные и полные данные платежей **не логируем**.
 - `correlation_id`: генерируется в `web`/nginx (или принимается из `X-Request-ID`), передаётся в `api` заголовком, в сообщения RabbitMQ, в логи всех процессов.
 - **Ротация:** Docker-драйвер `json-file` с `max-size` и `max-file` на каждом контейнере. В контейнерах логи в файлы изнутри приложения не пишем.
-- **Сбор:** Fluent Bit читает логи контейнеров и отправляет в два места: Elasticsearch (индекс на день `forsunki-logs-YYYY.MM.DD`, ILM-политика на удаление через N дней) и S3 (gzip, префикс по сервису и дате, lifecycle-правило хранения). В dev S3 эмулирует MinIO.
+- **Сбор:** Fluent Bit читает логи контейнеров и отправляет в два места: Elasticsearch (индекс на день `forsunki-logs-YYYY.MM.DD`, ILM-политика на удаление через N дней) и S3 (gzip, префикс по сервису и дате, lifecycle-правило хранения). В dev S3 эмулирует RustFS.
 - **Просмотр:** Kibana с готовым data view и сохранённым дашбордом (ошибки по сервисам, медленные запросы, поиск по `correlation_id`). В prod Kibana не публикуется наружу без аутентификации.
 - Стек логирования запускается через compose profile `logging` (Elasticsearch тяжёлый); `make up-full` поднимает всё.
 
@@ -160,7 +160,7 @@ Makefile  README.md  CLAUDE.md
 
 - Dockerfile: multi-stage, `python:3.12-slim` с зафиксированной версией, зависимости через uv с кэшем, запуск **не от root**, `.dockerignore`, healthcheck. Tailwind собирается отдельной стадией в образе `web`.
 - Compose: версии образов зафиксированы, healthchecks на всё, отдельные сети (внешняя, внутренняя, данные), наружу публикуется только nginx (в prod), лимиты ресурсов, `restart: unless-stopped`, именованные тома для данных.
-- Файлы: `compose.yml` (база), `compose.dev.yml` (hot reload, проброс портов, Adminer, MailHog, MinIO, Kibana), `compose.prod.yml` (образы из GHCR, без лишних портов, read-only файловая система где возможно, nginx + TLS). Миграции отдельным одноразовым контейнером перед стартом `api`.
+- Файлы: `compose.yml` (база), `compose.dev.yml` (hot reload, проброс портов, Adminer, MailHog, RustFS, Kibana), `compose.prod.yml` (образы из GHCR, без лишних портов, read-only файловая система где возможно, nginx + TLS). Миграции отдельным одноразовым контейнером перед стартом `api`.
 - Одна команда запуска: `make up` (ядро) или `make up-full` (с логированием и метриками).
 
 ## 13. Безопасность
@@ -194,7 +194,7 @@ make lint       # ruff + mypy
 make fmt        # ruff format
 ```
 
-Порты dev: web `8000`, api `8001` (документация `/docs`), RabbitMQ UI `15672`, Adminer `8080`, MailHog `8025`, Kibana `5601`, Grafana `3000`, MinIO `9001`.
+Порты dev: web `8000`, api `8001` (документация `/docs`), RabbitMQ UI `15672`, Adminer `8080`, MailHog `8025`, Kibana `5601`, Grafana `3000`, RustFS `9001`.
 Elasticsearch под WSL требует `vm.max_map_count=262144` (описать в README).
 
 ## 16. Git и PR

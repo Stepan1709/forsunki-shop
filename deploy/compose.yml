@@ -39,6 +39,10 @@ secrets:
     file: ${SECRETS_DIR:-./secrets/dev}/redis_password
   rabbitmq_password:
     file: ${SECRETS_DIR:-./secrets/dev}/rabbitmq_password
+  s3_access_key:
+    file: ${SECRETS_DIR:-./secrets/dev}/s3_access_key
+  s3_secret_key:
+    file: ${SECRETS_DIR:-./secrets/dev}/s3_secret_key
   jwt_secret:
     file: ${SECRETS_DIR:-./secrets/dev}/jwt_secret
 
@@ -140,7 +144,7 @@ services:
     restart: "no"
     init: true
     environment: *api-env
-    secrets: [postgres_password, redis_password, rabbitmq_password, jwt_secret]
+    secrets: [postgres_password, redis_password, rabbitmq_password, jwt_secret, s3_access_key, s3_secret_key]
     depends_on:
       postgres: {condition: service_healthy}
     networks: [data]
@@ -155,7 +159,7 @@ services:
     init: true               # PID 1 корректно передаёт сигналы и подбирает «зомби»
     stop_grace_period: 30s   # больше, чем --timeout-graceful-shutdown (25 с) в CMD образа
     environment: *api-env
-    secrets: [postgres_password, redis_password, rabbitmq_password, jwt_secret]
+    secrets: [postgres_password, redis_password, rabbitmq_password, jwt_secret, s3_access_key, s3_secret_key]
     depends_on:
       migrate: {condition: service_completed_successfully}
       postgres: {condition: service_healthy}
