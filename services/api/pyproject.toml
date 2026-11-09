@@ -31,6 +31,7 @@ dev = [
     "mypy>=1.13",
     "ruff>=0.8",
     "testcontainers[minio,postgres,rabbitmq,redis]>=4.8",
+    "hypothesis>=6.115",
 ]
 
 [tool.pytest.ini_options]

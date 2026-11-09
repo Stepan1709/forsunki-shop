@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 from aio_pika.abc import AbstractChannel
 from fastapi import FastAPI
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 from app.core.config import Settings
 from app.core.inbox import ProcessedMessage
@@ -224,3 +224,50 @@ async def test_registered_user_event_reaches_worker_handler_with_same_correlatio
         processed = await session.scalar(select(func.count()).select_from(ProcessedMessage))
     assert sent is not None
     assert processed == 1
+
+
+# ----------------------------------------------------------------------------------------- события без получателя
+async def test_event_without_subscriber_does_not_block_other_events(
+    app: FastAPI, channel: AbstractChannel, publisher: Publisher
+) -> None:
+    """Событие, для которого нет очереди (подписчик ещё не развёрнут), откладывается и не задерживает остальные."""
+    spec = make_spec()
+    await bind_queue(channel, spec)
+    await add_events(
+        app, "nobody.listens.yet", 1
+    )  # самое старое: именно оно первым попадает в пачку
+    await asyncio.sleep(0.05)
+    await add_events(app, spec.routing_keys[0], 2)
+    relay = make_relay(app, publisher)
+
+    sent = await relay.run_once()
+
+    assert sent == 2  # обычные события ушли, несмотря на застрявшее перед ними
+    await drain(channel, spec.name, 2)
+    async with app.state.resources.session_factory() as session:
+        stuck = (
+            await session.scalars(select(OutboxMessage).where(OutboxMessage.sent_at.is_(None)))
+        ).one()
+    assert stuck.routing_key == "nobody.listens.yet"
+    assert stuck.attempts == 1
+    assert stuck.last_error
+    assert "нет получателя" in stuck.last_error
+    assert stuck.next_attempt_at > stuck.created_at  # следующая попытка отложена
+
+    assert await relay.run_once() == 0  # пока пауза не прошла, его не трогаем
+
+
+async def test_deferred_event_is_delivered_once_a_subscriber_appears(
+    app: FastAPI, channel: AbstractChannel, publisher: Publisher
+) -> None:
+    spec = make_spec()
+    await add_events(app, spec.routing_keys[0], 1)
+    relay = make_relay(app, publisher)
+    assert await relay.run_once() == 0  # очереди ещё нет: событие отложено
+
+    await bind_queue(channel, spec)  # подписчик развернули
+    async with app.state.resources.engine.begin() as conn:  # и пауза истекла
+        await conn.execute(text("UPDATE outbox SET next_attempt_at = now() - interval '1 second'"))
+
+    assert await relay.run_once() == 1
+    assert len(await drain(channel, spec.name, 1)) == 1

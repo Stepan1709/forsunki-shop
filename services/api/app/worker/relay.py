@@ -12,13 +12,13 @@
 
 import asyncio
 import contextlib
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.core.messaging.errors import PublishFailed
+from app.core.messaging.errors import PublishFailed, Unroutable
 from app.core.messaging.publisher import Publisher
 from app.core.outbox import OutboxMessage
 
@@ -45,7 +45,10 @@ class OutboxRelay:
             rows = (
                 await session.scalars(
                     select(OutboxMessage)
-                    .where(OutboxMessage.sent_at.is_(None))
+                    .where(
+                        OutboxMessage.sent_at.is_(None),
+                        OutboxMessage.next_attempt_at <= func.now(),
+                    )
                     .order_by(OutboxMessage.created_at, OutboxMessage.id)
                     .limit(self._batch_size)
                     .with_for_update(skip_locked=True)
@@ -61,9 +64,14 @@ class OutboxRelay:
                         message_id=row.id,
                         correlation_id=row.correlation_id,
                     )
+                except Unroutable as exc:
+                    # У события нет получателя. Это проблема конкретного сообщения, а не брокера: откладываем его
+                    # с растущей паузой и идём дальше, чтобы оно не блокировало остальные события.
+                    self._defer(row, exc)
+                    continue
                 except PublishFailed:
-                    # Брокер недоступен или отверг сообщение: остановка пачки. Уже отправленные ниже всё равно
-                    # будут помечены, оставшиеся повторятся на следующей итерации.
+                    # Брокер недоступен: остановка пачки. Уже отправленные всё равно будут помечены,
+                    # остальные повторятся на следующей итерации.
                     break
                 row.sent_at = datetime.now(UTC)
                 sent += 1
@@ -71,6 +79,15 @@ class OutboxRelay:
         if sent:
             log.info("outbox_batch_sent", count=sent)
         return sent
+
+    @staticmethod
+    def _defer(row: OutboxMessage, exc: Exception) -> None:
+        row.attempts += 1
+        row.last_error = str(exc)[:500]
+        # Экспоненциальная пауза: 10 с, 20 с, 40 с ... не дольше часа.
+        delay = min(10 * 2 ** (row.attempts - 1), 3600)
+        row.next_attempt_at = datetime.now(UTC) + timedelta(seconds=delay)
+        log.warning("outbox_event_unroutable", routing_key=row.routing_key, attempts=row.attempts)
 
     async def run(self, stop: asyncio.Event) -> None:
         """Крутится, пока не поднят флаг stop. Текущая пачка всегда доводится до конца."""
