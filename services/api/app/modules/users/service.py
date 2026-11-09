@@ -55,7 +55,7 @@ class AuthService:
         except IntegrityError:
             await self._session.rollback()
             raise ConflictError("Пользователь с таким email уже существует") from None
-        # Событие ставится до commit: с outbox (этап 4) оно попадёт в ту же транзакцию.
+        # Событие ставится до commit: с outbox оно попадёт в ту же транзакцию.
         await self._events.publish(
             "user.registered", {"user_id": str(user.id), "email": user.email}
         )

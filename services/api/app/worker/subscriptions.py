@@ -10,7 +10,7 @@ log = structlog.get_logger("subscriptions")
 
 
 async def handle_user_registered(ctx: MessageContext) -> None:
-    """Заглушка: на этапе 7 здесь появится отправка приветственного письма."""
+    """Заглушка: позже здесь появится отправка приветственного письма."""
     log.info("user_registered_received", user_id=ctx.data.get("user_id"))
 
 

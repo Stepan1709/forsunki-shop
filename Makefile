@@ -1,4 +1,4 @@
-# Запускать из WSL (Linux-оболочка). Все команды из CLAUDE.md, раздел 15.
+# Запускать из WSL (Linux-оболочка). Основные команды: make help.
 SHELL := /bin/bash
 COMPOSE := docker compose --env-file .env -f deploy/compose.yml -f deploy/compose.dev.yml
 SERVICES := api web payment_stub
@@ -29,7 +29,7 @@ secrets: ## Сгенерировать dev-секреты в deploy/secrets/dev 
 up: env secrets ## Поднять ядро (postgres, redis, rabbitmq + dev-инструменты)
 	$(COMPOSE) up -d --build --wait
 
-up-full: up ## Ядро + логирование и метрики (профили появятся на этапах 9 и 10)
+up-full: up ## Ядро + логирование и метрики (профили logging и monitoring)
 	$(COMPOSE) --profile logging --profile monitoring up -d --wait
 
 down: ## Остановить
@@ -47,7 +47,7 @@ test: ## Unit + интеграционные тесты всех сервисо�
 	done
 
 e2e: ## Сквозной сценарий (появится вместе с оплатой)
-	@echo "e2e пока нет: сценарий готов после этапа 8"
+	@echo "e2e: сквозной сценарий появится вместе с сайтом и оплатой"
 
 lint: ## ruff + mypy
 	@for s in $(SERVICES); do \

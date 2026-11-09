@@ -19,7 +19,7 @@ _bearer = HTTPBearer(auto_error=False)
 
 def get_client_ip(request: Request) -> str:
     # За nginx здесь будет адрес прокси; реальный IP придёт из заголовка после настройки
-    # доверенных прокси (этап 12). X-Forwarded-For без этого доверять нельзя: его подделывают.
+    # доверенных прокси. X-Forwarded-For без этого доверять нельзя: его подделывают.
     return request.client.host if request.client else "unknown"
 
 
