@@ -32,6 +32,62 @@ services:
     networks: [backend, data, dev]
     ports: ["127.0.0.1:8000:8000"]   # сайт: http://localhost:8000
 
+  # Стек логов: порты только на localhost (без аутентификации, только для разработки).
+  elasticsearch:
+    networks: [data, dev]
+    ports: ["127.0.0.1:9200:9200"]
+
+  kibana:
+    networks: [data, dev]
+    ports: ["127.0.0.1:5601:5601"]   # http://localhost:5601
+
+  # Логи уходят и в S3: перед стартом нужен бакет с правилом хранения.
+  fluent-bit:
+    depends_on:
+      s3_logs_init: {condition: service_completed_successfully}
+    # Docker Desktop (WSL): настоящие файлы логов лежат в виртуальной машине Docker, а обычное монтирование
+    # /var/lib/docker/containers подменяется пустым каталогом дистрибутива. Поэтому в dev обычное монтирование
+    # отключено, а /var/lib/docker/containers внутри контейнера становится ссылкой на /proc/1/root/... (корень
+    # процесса 1 виртуальной машины). Нужны pid: host и право SYS_PTRACE, а inotify через такую ссылку не работает,
+    # поэтому файлы проверяются опросом. Приём только для разработки на Docker Desktop: на Linux-сервере
+    # используется обычное монтирование из compose.yml.
+    pid: host
+    cap_add: [SYS_PTRACE]
+    security_opt: ["apparmor=unconfined"]
+    environment:
+      LOGS_LINK_TARGET: /proc/1/root/var/lib/docker/containers
+      TAIL_INOTIFY: "false"
+    volumes: !override
+      - ./fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      - ./fluent-bit/parsers.conf:/fluent-bit/etc/parsers.conf:ro
+      - fluent_bit_data:/var/lib/fluent-bit
+
+  s3_logs_init:
+    image: amazon/aws-cli:2.22.0
+    profiles: [logging]
+    restart: "no"
+    entrypoint:
+      - sh
+      - -c
+      - |
+        export AWS_ACCESS_KEY_ID="$$(cat /run/secrets/s3_access_key)"
+        export AWS_SECRET_ACCESS_KEY="$$(cat /run/secrets/s3_secret_key)"
+        export AWS_DEFAULT_REGION=us-east-1
+        aws --endpoint-url http://s3:9000 s3api head-bucket --bucket forsunki-logs 2>/dev/null \
+          || aws --endpoint-url http://s3:9000 s3api create-bucket --bucket forsunki-logs
+        aws --endpoint-url http://s3:9000 s3api put-bucket-lifecycle-configuration \
+          --bucket forsunki-logs --lifecycle-configuration file:///config/lifecycle.json
+        echo "бакет forsunki-logs готов"
+    secrets: [s3_access_key, s3_secret_key]
+    volumes:
+      - ./s3/lifecycle.json:/config/lifecycle.json:ro
+    depends_on:
+      s3: {condition: service_healthy}
+    networks: [data]
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3", labels: "com.docker.compose.service"}
+
   api:
     networks: [backend, data, dev]
     ports: ["127.0.0.1:8001:8000"]   # документация: http://localhost:8001/docs
@@ -87,7 +143,7 @@ services:
         limits: {cpus: "0.5", memory: 512M}
     logging:
       driver: json-file
-      options: {max-size: "10m", max-file: "3"}
+      options: {max-size: "10m", max-file: "3", labels: "com.docker.compose.service"}
 
   adminer:
     image: adminer:4.8.1
@@ -103,7 +159,7 @@ services:
         limits: {cpus: "0.25", memory: 128M}
     logging:
       driver: json-file
-      options: {max-size: "10m", max-file: "3"}
+      options: {max-size: "10m", max-file: "3", labels: "com.docker.compose.service"}
 
   # Принимает письма вместо реальной отправки (SMTP :1025, интерфейс :8025).
   mailpit:
@@ -123,4 +179,4 @@ services:
         limits: {cpus: "0.25", memory: 128M}
     logging:
       driver: json-file
-      options: {max-size: "10m", max-file: "3"}
+      options: {max-size: "10m", max-file: "3", labels: "com.docker.compose.service"}

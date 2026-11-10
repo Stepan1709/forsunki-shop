@@ -57,20 +57,26 @@ def main() -> None:
 
     # Магазин и карточка.
     shop = client.get("/shop", params={"condition": "new"})
-    card = re.search(r'href="/shop/(\d+)"', shop.text)
-    if not card:
+    ids = list(dict.fromkeys(re.findall(r'href="/shop/(\d+)"', shop.text)))
+    if not ids:
         fail("в магазине нет товаров (выполните make seed)")
-        raise SystemExit(1)
-    product = client.get(f"/shop/{card.group(1)}")
+    # Берём первый товар, который есть в наличии: часть каталога могла быть распродана предыдущими запусками.
+    chosen = ""
+    product = shop
+    for candidate in ids:
+        page = client.get(f"/shop/{candidate}")
+        if "В корзину" in page.text:
+            chosen, product = candidate, page
+            break
+    if not chosen:
+        fail("в первых товарах каталога нет остатка (make seed COUNT=2000)")
     token = csrf(product.text)
-    if "В корзину" not in product.text:
-        fail("товар нет в наличии: возьмите другой каталог (make seed)")
     step("магазин и карточка товара открываются")
 
     # Корзина.
     added = client.post(
         "/cart/add",
-        data={"injector_id": card.group(1), "quantity": "1"},
+        data={"injector_id": chosen, "quantity": "1"},
         headers={**HTMX, "X-CSRF-Token": token},
     )
     if "Добавлено в корзину" not in added.text:

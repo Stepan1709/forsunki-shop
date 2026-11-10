@@ -1,11 +1,14 @@
 name: forsunki
 
 # Ротация Docker-логов на каждом контейнере: без неё json-file растёт бесконечно.
+# labels: Docker кладёт имя сервиса compose в каждую запись лога (поле attrs). По нему Fluent Bit узнаёт,
+# от какого контейнера пришла строка, даже если сам контейнер (Postgres, RabbitMQ) пишет не JSON.
 x-logging: &default-logging
   driver: json-file
   options:
     max-size: "10m"
     max-file: "3"
+    labels: "com.docker.compose.service"
 
 # Общие настройки api, worker и migrate: один образ, разные команды.
 x-api-build: &api-build
@@ -55,6 +58,8 @@ volumes:
   redis_data: {}
   rabbitmq_data: {}
   payment_stub_data: {}
+  es_data: {}
+  fluent_bit_data: {}
 
 services:
   postgres:
@@ -228,6 +233,121 @@ services:
       - payment_stub_data:/data
     networks: [backend]
     # healthcheck описан в Dockerfile (/health/live)
+    deploy:
+      resources:
+        limits: {cpus: "0.5", memory: 256M}
+    logging: *default-logging
+
+  # ------------------------------------------------------------------------------------------ логирование
+  # Профиль logging (make up-full). Путь записи: контейнер -> json-file (с ротацией) -> Fluent Bit -> Elasticsearch и S3.
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    profiles: [logging]
+    restart: unless-stopped
+    init: true
+    environment:
+      discovery.type: single-node
+      # В dev без аутентификации: порты опубликованы только на 127.0.0.1. В prod защита включается на этапе 12,
+      # а Elasticsearch и Kibana наружу не публикуются.
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+      cluster.routing.allocation.disk.threshold_enabled: "false"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    networks: [data]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 40s
+    deploy:
+      resources:
+        limits: {cpus: "1.0", memory: 1G}
+    logging: *default-logging
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.17.0
+    profiles: [logging]
+    restart: unless-stopped
+    init: true
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+      TELEMETRY_OPTIN: "false"
+      TELEMETRY_ALLOWCHANGINGOPTINSTATUS: "false"
+      # Kibana просит ключ шифрования для сохранённых объектов с секретами; у нас таких нет, ключ только убирает предупреждение.
+      XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY: forsunki-dev-kibana-key-0123456789abcdef
+      NODE_OPTIONS: --max-old-space-size=512
+    depends_on:
+      elasticsearch: {condition: service_healthy}
+    networks: [data]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:5601/api/status | grep -q '\"level\":\"available\"' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    deploy:
+      resources:
+        limits: {cpus: "1.0", memory: 1G}
+    logging: *default-logging
+
+  # Одноразовая настройка: политика ILM, шаблон индекса, data view и дашборд Kibana.
+  logging_setup:
+    image: curlimages/curl:8.11.1
+    profiles: [logging]
+    restart: "no"
+    entrypoint: ["sh", "/config/kibana/setup.sh"]
+    volumes:
+      - ./elasticsearch:/config/elasticsearch:ro
+      - ./kibana:/config/kibana:ro
+    depends_on:
+      elasticsearch: {condition: service_healthy}
+      kibana: {condition: service_healthy}
+    networks: [data]
+    logging: *default-logging
+
+  # Сборщик логов. Читает файлы Docker только для чтения; запускается от root, потому что файлы логов принадлежат root.
+  # Ключи S3 лежат в файлах секретов, а Fluent Bit читает их из переменных окружения: экспортируем перед запуском.
+  fluent-bit:
+    image: fluent/fluent-bit:3.2.2-debug
+    profiles: [logging]
+    restart: unless-stopped
+    user: "0:0"
+    entrypoint:
+      - sh
+      - -c
+      - |
+        export AWS_ACCESS_KEY_ID="$$(cat /run/secrets/s3_access_key)"
+        export AWS_SECRET_ACCESS_KEY="$$(cat /run/secrets/s3_secret_key)"
+        # Только для Docker Desktop (см. compose.dev.yml): путь с логами делается ссылкой на каталог виртуальной машины.
+        if [ -n "$$LOGS_LINK_TARGET" ]; then
+          mkdir -p /var/lib/docker
+          ln -s "$$LOGS_LINK_TARGET" /var/lib/docker/containers
+        fi
+        exec /fluent-bit/bin/fluent-bit -c /fluent-bit/etc/fluent-bit.conf
+    environment:
+      ELASTICSEARCH_HOST: elasticsearch
+      DOCKER_LOGS_GLOB: /var/lib/docker/containers/*/*-json.log
+      TAIL_INOTIFY: "true"
+      LOGS_S3_BUCKET: ${LOGS_S3_BUCKET:-forsunki-logs}
+      LOGS_S3_REGION: ${LOGS_S3_REGION:-us-east-1}
+      LOGS_S3_ENDPOINT: ${LOGS_S3_ENDPOINT:-http://s3:9000}
+    secrets: [s3_access_key, s3_secret_key]
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - ./fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      - ./fluent-bit/parsers.conf:/fluent-bit/etc/parsers.conf:ro
+      - fluent_bit_data:/var/lib/fluent-bit
+    depends_on:
+      elasticsearch: {condition: service_healthy}
+    networks: [data]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:2020/api/v1/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     deploy:
       resources:
         limits: {cpus: "0.5", memory: 256M}
