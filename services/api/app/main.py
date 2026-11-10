@@ -8,6 +8,7 @@ from app.core.errors import install_error_handlers
 from app.core.lifespan import resources_lifespan
 from app.core.logging import configure_logging
 from app.modules.cart.router import router as cart_router
+from app.modules.catalog.admin_router import router as catalog_admin_router
 from app.modules.catalog.router import router as catalog_router
 from app.modules.orders.router import router as orders_router
 from app.modules.payments.router import router as payments_router
@@ -36,6 +37,7 @@ def create_app(
     app.include_router(auth_router)
     app.include_router(users_router)
     app.include_router(catalog_router)
+    app.include_router(catalog_admin_router)
     app.include_router(cart_router)
     app.include_router(orders_router)
     app.include_router(payments_router)
