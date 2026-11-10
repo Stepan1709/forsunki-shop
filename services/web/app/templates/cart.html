@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}Корзина: {{ shop.shop_name }}{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-bold">Корзина</h1>
+<div id="cart" class="mt-4">
+  {% include "partials/_cart.html" %}
+</div>
+{% endblock %}

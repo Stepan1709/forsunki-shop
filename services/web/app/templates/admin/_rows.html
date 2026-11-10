@@ -1,0 +1,19 @@
+{% for i in items %}
+<tr>
+  <td class="p-3 whitespace-nowrap">{{ i.oem_number }}</td>
+  <td class="p-3">{{ i.title }}<div class="text-xs text-slate-500">{{ i.manufacturer.name }}</div></td>
+  <td class="p-3">{{ condition_labels[i.condition] }}</td>
+  <td class="p-3 text-right whitespace-nowrap">{{ i.price_kopecks | money }}</td>
+  <td class="p-3 text-right">{{ i.stock }}</td>
+  <td class="p-3">{% if i.is_active %}<span class="badge bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">В продаже</span>{% else %}<span class="badge bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200">Скрыт</span>{% endif %}</td>
+  <td class="p-3 text-right"><a class="text-brand-600 hover:underline" href="/admin/products/{{ i.id }}">Изменить</a></td>
+</tr>
+{% else %}
+<tr><td class="p-8 text-center text-slate-500" colspan="7">Ничего не найдено</td></tr>
+{% endfor %}
+{% if next_cursor %}
+<tr><td colspan="7" class="p-3 text-center">
+  <a class="btn-secondary" href="/admin/products?cursor={{ next_cursor }}{% if q %}&q={{ q | urlencode }}{% endif %}"
+     hx-get="/admin/products?cursor={{ next_cursor }}{% if q %}&q={{ q | urlencode }}{% endif %}" hx-target="closest tr" hx-swap="outerHTML">Показать ещё</a>
+</td></tr>
+{% endif %}

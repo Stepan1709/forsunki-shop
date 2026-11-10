@@ -46,8 +46,9 @@ test: ## Unit + интеграционные тесты всех сервисо�
 	  echo "== $$s"; (cd services/$$s && uv run pytest) || exit 1; \
 	done
 
-e2e: ## Сквозной сценарий на запущенном стеке: заказ, оплата в заглушке, статусы
+e2e: ## Сквозные сценарии на запущенном стеке: заказ и оплата через api, путь покупателя через сайт
 	cd services/api && uv run python ../../scripts/e2e_payment.py
+	cd services/api && uv run python ../../scripts/e2e_web.py
 
 lint: ## ruff + mypy
 	@for s in $(SERVICES); do \

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Ремонт форсунок: {{ shop.shop_name }}{% endblock %}
+{% block description %}Диагностика и ремонт дизельных форсунок Common Rail и насос-форсунок на стенде.{% endblock %}
+{% block content %}
+<h1 class="text-3xl font-bold">Ремонт форсунок</h1>
+<p class="mt-2 max-w-3xl text-lg text-slate-600 dark:text-slate-400">
+  Диагностируем и восстанавливаем форсунки Common Rail и насос-форсунки. Сначала проверка на стенде, потом согласование стоимости: без вашего согласия ремонт не начинается.
+</p>
+
+<div class="mt-8 grid gap-8 lg:grid-cols-5">
+  <div class="space-y-8 lg:col-span-2">
+    <section>
+      <h2 class="text-xl font-semibold">Примерные цены</h2>
+      <div class="card mt-3 divide-y divide-slate-200 dark:divide-slate-700">
+        {% for name, price in prices %}
+          <div class="flex items-center justify-between gap-4 px-4 py-3 text-sm"><span>{{ name }}</span><span class="shrink-0 font-semibold">{{ price }}</span></div>
+        {% endfor %}
+      </div>
+      <p class="mt-2 text-xs text-slate-500">Точная цена зависит от модели и состояния, её называет мастер после диагностики.</p>
+    </section>
+    <section>
+      <h2 class="text-xl font-semibold">Как мы работаем</h2>
+      <ol class="mt-3 list-inside list-decimal space-y-1 text-slate-700 dark:text-slate-300">
+        <li>Вы оставляете заявку, мастер звонит или пишет.</li>
+        <li>Привозите или отправляете форсунки.</li>
+        <li>Диагностика на стенде и согласование цены.</li>
+        <li>Ремонт, проверка, возврат с отчётом.</li>
+      </ol>
+    </section>
+    <section>
+      <h2 class="text-xl font-semibold">Контакты</h2>
+      <div class="mt-2 space-y-1 text-slate-700 dark:text-slate-300">
+        <div>{{ shop.shop_phone }}</div>
+        <div>{{ shop.shop_email }}</div>
+        <div>{{ shop.shop_address }}</div>
+        <div>{{ shop.shop_hours }}</div>
+      </div>
+    </section>
+  </div>
+
+  <section class="lg:col-span-3" id="repair-box">
+    <h2 class="text-xl font-semibold">Заявка на ремонт</h2>
+    {% if done %}
+      {% include "partials/_repair_done.html" %}
+    {% else %}
+      {% include "partials/_repair_form.html" %}
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

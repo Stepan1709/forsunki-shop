@@ -1,3 +1,5 @@
+# Сторонние минифицированные библиотеки хранятся как есть: их содержимое не правится хуками.
+exclude: ^services/web/app/static/vendor/
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0

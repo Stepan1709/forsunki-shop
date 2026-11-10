@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Заказ {{ order.id[:8] | upper }}: {{ shop.shop_name }}{% endblock %}
+{% block content %}
+<nav class="mb-4 text-sm text-slate-500" aria-label="Навигация"><a href="/profile" class="hover:text-brand-600">← Мои заказы</a></nav>
+<h1 class="text-2xl font-bold">Заказ № {{ order.id[:8] | upper }}</h1>
+<div class="text-sm text-slate-500">Оформлен {{ order.created_at | dt }}</div>
+
+{% include "orders/_status.html" %}
+
+<div class="card mt-6 divide-y divide-slate-200 dark:divide-slate-700">
+  {% for line in order["items"] %}
+  <div class="flex items-center justify-between gap-4 p-4 text-sm">
+    <div>
+      <a href="/shop/{{ line.injector_id }}" class="font-semibold hover:text-brand-600">{{ line.title }}</a>
+      <div class="text-xs text-slate-500">Арт. {{ line.oem_number }} · {{ line.quantity }} × {{ line.unit_price_kopecks | money }}</div>
+    </div>
+    <div class="font-semibold">{{ line.line_total_kopecks | money }}</div>
+  </div>
+  {% endfor %}
+  <div class="flex items-center justify-between p-4">
+    <span class="text-slate-600 dark:text-slate-400">Итого</span>
+    <span class="text-xl font-bold">{{ order.total_kopecks | money }}</span>
+  </div>
+</div>
+{% endblock %}

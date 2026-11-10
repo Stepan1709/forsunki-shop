@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Профиль: {{ shop.shop_name }}{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-bold">Профиль</h1>
+<div class="card mt-4 p-5 text-sm">
+  <div><span class="text-slate-500">Email:</span> <span class="font-medium">{{ user.email }}</span></div>
+  <div class="mt-1"><span class="text-slate-500">Роль:</span> {{ 'Администратор' if user.is_admin else 'Покупатель' }}</div>
+</div>
+
+<h2 class="mt-8 text-xl font-semibold">Мои заказы</h2>
+{% if orders %}
+  <div class="card mt-3 divide-y divide-slate-200 dark:divide-slate-700">
+    {% for o in orders %}
+    {% set label, color = status_labels[o.status] %}
+    <a href="/orders/{{ o.id }}" class="flex flex-wrap items-center justify-between gap-3 p-4 hover:bg-slate-50 dark:hover:bg-slate-700/40">
+      <div>
+        <div class="font-semibold">№ {{ o.id[:8] | upper }}</div>
+        <div class="text-xs text-slate-500">{{ o.created_at | dt }} · {{ o["items"] | length }} поз.</div>
+      </div>
+      <div class="flex items-center gap-4">
+        <span class="badge
+          {% if color == 'green' %}bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200
+          {% elif color == 'amber' %}bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200
+          {% elif color == 'red' %}bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200
+          {% else %}bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-200{% endif %}">{{ label }}</span>
+        <span class="font-semibold">{{ o.total_kopecks | money }}</span>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% if next_cursor %}<a class="btn-secondary mt-4" href="/profile?cursor={{ next_cursor }}">Следующие заказы</a>{% endif %}
+{% else %}
+  <div class="card mt-3 p-10 text-center">
+    <p class="font-semibold">Заказов пока нет</p>
+    <a href="/shop" class="btn-primary mt-4">Перейти в магазин</a>
+  </div>
+{% endif %}
+{% endblock %}

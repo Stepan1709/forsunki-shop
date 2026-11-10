@@ -1,0 +1,8 @@
+<div class="mb-3 flex items-start gap-3 rounded-lg border px-4 py-3 text-sm
+  {% if message.kind == 'success' %}border-green-300 bg-green-50 text-green-900 dark:border-green-800 dark:bg-green-950 dark:text-green-200
+  {% elif message.kind == 'error' %}border-red-300 bg-red-50 text-red-900 dark:border-red-800 dark:bg-red-950 dark:text-red-200
+  {% else %}border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-200{% endif %}"
+  x-data="{ shown: true }" x-show="shown">
+  <span class="flex-1">{{ message.text }}</span>
+  <button type="button" class="opacity-60 hover:opacity-100" @click="shown = false" aria-label="Закрыть">×</button>
+</div>
