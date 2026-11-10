@@ -28,9 +28,16 @@ services:
       PUBLIC_BASE_URL: http://localhost:8002   # адрес страницы оплаты для браузера
     ports: ["127.0.0.1:8002:8000"]
 
+  web:
+    networks: [backend, data, dev]
+    ports: ["127.0.0.1:8000:8000"]   # сайт: http://localhost:8000
+
   api:
     networks: [backend, data, dev]
     ports: ["127.0.0.1:8001:8000"]   # документация: http://localhost:8001/docs
+    environment:
+      # Куда провайдер возвращает покупателя после оплаты: страница заказа на сайте.
+      PAYMENT_RETURN_URL: http://localhost:8000/orders/{order_id}
     depends_on:
       s3: {condition: service_healthy}
       payment_stub: {condition: service_healthy}

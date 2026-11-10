@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}: {{ shop.shop_name }}{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-lg py-12 text-center">
+  <div class="text-6xl font-bold text-brand-600">{{ code }}</div>
+  <h1 class="mt-4 text-2xl font-bold">{{ title }}</h1>
+  <p class="mt-2 text-slate-600 dark:text-slate-400">{{ text }}</p>
+  <div class="mt-6 flex justify-center gap-3">
+    <a href="/" class="btn-primary">На главную</a>
+    <a href="/shop" class="btn-secondary">В магазин</a>
+  </div>
+</div>
+{% endblock %}

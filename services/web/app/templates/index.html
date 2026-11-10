@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="rounded-2xl bg-slate-900 px-6 py-12 text-white sm:px-12 sm:py-16 dark:bg-slate-800">
+  <div class="max-w-2xl">
+    <h1 class="text-3xl font-bold leading-tight sm:text-4xl">Дизельные форсунки: продажа и ремонт</h1>
+    <p class="mt-4 text-lg text-slate-300">
+      Новые и восстановленные форсунки Bosch, Denso, Delphi и Siemens для Common Rail и насос-форсунок.
+      Собственный стенд для диагностики и ремонта.
+    </p>
+    <div class="mt-8 flex flex-wrap gap-3">
+      <a href="/shop" class="btn-primary px-6 py-3 text-base">Перейти в магазин</a>
+      <a href="/repair" class="btn border border-slate-500 px-6 py-3 text-base text-white hover:bg-slate-700">Заказать ремонт</a>
+    </div>
+  </div>
+</section>
+
+<section class="mt-10 grid gap-4 sm:grid-cols-3" aria-label="Преимущества">
+  <div class="card p-5">
+    <div class="text-lg font-semibold">Подбор по артикулу</div>
+    <p class="mt-1 text-sm text-slate-600 dark:text-slate-400">Поиск работает с любыми пробелами и дефисами в номере, а также по названию двигателя.</p>
+  </div>
+  <div class="card p-5">
+    <div class="text-lg font-semibold">Проверка на стенде</div>
+    <p class="mt-1 text-sm text-slate-600 dark:text-slate-400">Каждая восстановленная форсунка проходит испытания по производительности и герметичности.</p>
+  </div>
+  <div class="card p-5">
+    <div class="text-lg font-semibold">Честный остаток</div>
+    <p class="mt-1 text-sm text-slate-600 dark:text-slate-400">Товар резервируется при оформлении заказа, поэтому вы не купите то, чего уже нет на складе.</p>
+  </div>
+</section>
+
+{% if featured %}
+<section class="mt-12">
+  <div class="mb-4 flex items-end justify-between">
+    <h2 class="text-2xl font-bold">Новинки каталога</h2>
+    <a href="/shop" class="text-sm font-medium text-brand-600 hover:underline">Весь каталог</a>
+  </div>
+  <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    {% for i in featured %}{% include "shop/_card.html" %}{% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section class="card mt-12 flex flex-col items-start gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
+  <div>
+    <h2 class="text-xl font-bold">Форсунка не работает?</h2>
+    <p class="mt-1 text-slate-600 dark:text-slate-400">Опишите проблему, и мастер свяжется с вами, чтобы согласовать диагностику и цену.</p>
+  </div>
+  <a href="/repair" class="btn-primary shrink-0">Оставить заявку</a>
+</section>
+{% endblock %}

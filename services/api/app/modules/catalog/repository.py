@@ -29,6 +29,7 @@ class InjectorFilter:
     type: InjectorType | None = None
     condition: InjectorCondition | None = None
     q: str | None = None  # поиск по артикулу или применимости
+    include_inactive: bool = False  # только для администратора: показывать и снятые с продажи
 
 
 @dataclass(frozen=True)
@@ -47,7 +48,9 @@ class CatalogRepository:
     async def list_injectors(
         self, flt: InjectorFilter, after_id: int | None, limit: int
     ) -> list[Injector]:
-        stmt = select(Injector).where(Injector.is_active.is_(True))
+        stmt = select(Injector)
+        if not flt.include_inactive:
+            stmt = stmt.where(Injector.is_active.is_(True))
 
         if flt.manufacturer:
             stmt = stmt.where(
@@ -87,10 +90,15 @@ class CatalogRepository:
         # Короткий запрос ничего не находит: возвращаем заведомо ложное условие, а не весь каталог.
         return or_(*conditions) if conditions else Injector.id < 0
 
-    async def get_injector(self, injector_id: int, *, only_active: bool = True) -> Injector | None:
+    async def get_injector(
+        self, injector_id: int, *, only_active: bool = True, for_update: bool = False
+    ) -> Injector | None:
         stmt = select(Injector).where(Injector.id == injector_id)
         if only_active:
             stmt = stmt.where(Injector.is_active.is_(True))
+        if for_update:
+            # Блокировка строки: параллельное резервирование (условный UPDATE) дождётся конца правки.
+            stmt = stmt.with_for_update(of=Injector)
         result = await self._session.execute(stmt)
         return result.scalars().unique().one_or_none()
 

@@ -232,3 +232,28 @@ services:
       resources:
         limits: {cpus: "0.5", memory: 256M}
     logging: *default-logging
+
+  # Сайт: FastAPI + Jinja2 + HTMX. Ходит в api по HTTP, сессии (токены пользователей) хранит в Redis.
+  # Базе данных, RabbitMQ и S3 доступа у него нет: всё идёт через api.
+  web:
+    build:
+      context: ..
+      dockerfile: services/web/Dockerfile
+    image: forsunki-web:dev
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+    environment:
+      ENV: ${ENV:-dev}
+      API_URL: http://api:8000
+      REDIS_HOST: redis
+    secrets: [redis_password]
+    depends_on:
+      api: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    networks: [backend, data]
+    # healthcheck описан в Dockerfile (/health/live)
+    deploy:
+      resources:
+        limits: {cpus: "0.5", memory: 256M}
+    logging: *default-logging

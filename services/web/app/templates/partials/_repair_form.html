@@ -1,0 +1,47 @@
+{# htmx заменяет весь блок формы (успех или ошибки); без JavaScript форма отправляется обычным POST. #}
+<form id="repair-form" method="post" action="/repair" class="card mt-3 space-y-4 p-5"
+      hx-post="/repair" hx-target="#repair-form" hx-swap="outerHTML" hx-indicator="#repair-spinner">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="idem" value="{{ idem }}">
+  {# Поле-ловушка: скрыто от людей и от скринридеров, а боты заполняют все поля подряд. #}
+  <div style="position:absolute;left:-9999px" aria-hidden="true">
+    <label for="website">Не заполняйте это поле</label>
+    <input id="website" name="website" type="text" tabindex="-1" autocomplete="off">
+  </div>
+
+  {% if error %}<div class="rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-900 dark:border-red-800 dark:bg-red-950 dark:text-red-200" role="alert">{{ error }}</div>{% endif %}
+
+  <div class="grid gap-4 sm:grid-cols-2">
+    <div>
+      <label class="label" for="name">Ваше имя *</label>
+      <input id="name" name="name" class="input" required minlength="2" maxlength="100" value="{{ form.name or '' }}">
+      {% if field_errors and field_errors.name %}<p class="field-error">{{ field_errors.name }}</p>{% endif %}
+    </div>
+    <div>
+      <label class="label" for="phone">Телефон</label>
+      <input id="phone" name="phone" type="tel" class="input" placeholder="+7 900 000-00-00" value="{{ form.phone or '' }}">
+      {% if field_errors and field_errors.phone %}<p class="field-error">{{ field_errors.phone }}</p>{% endif %}
+    </div>
+    <div class="sm:col-span-2">
+      <label class="label" for="email">Email</label>
+      <input id="email" name="email" type="email" class="input" value="{{ form.email or '' }}">
+      <p class="mt-1 text-xs text-slate-500">Укажите телефон или email: так мастер сможет с вами связаться.</p>
+      {% if field_errors and (field_errors.email or field_errors.get('_') ) %}<p class="field-error">{{ field_errors.email }}</p>{% endif %}
+    </div>
+    <div class="sm:col-span-2">
+      <label class="label" for="vehicle">Автомобиль и двигатель *</label>
+      <input id="vehicle" name="vehicle" class="input" required maxlength="200" placeholder="Mercedes Sprinter 2.1 CDI, OM651" value="{{ form.vehicle or '' }}">
+      {% if field_errors and field_errors.vehicle %}<p class="field-error">{{ field_errors.vehicle }}</p>{% endif %}
+    </div>
+    <div class="sm:col-span-2">
+      <label class="label" for="injector">Артикул или производитель форсунки</label>
+      <input id="injector" name="injector" class="input" maxlength="200" placeholder="Bosch 0 445 110 183" value="{{ form.injector or '' }}">
+    </div>
+    <div class="sm:col-span-2">
+      <label class="label" for="description">Что случилось *</label>
+      <textarea id="description" name="description" class="input" rows="4" required minlength="10" maxlength="2000" placeholder="Двигатель троит на холодную, дымит чёрным…">{{ form.description or '' }}</textarea>
+      {% if field_errors and field_errors.description %}<p class="field-error">{{ field_errors.description }}</p>{% endif %}
+    </div>
+  </div>
+  <button class="btn-primary" type="submit">Отправить заявку <span id="repair-spinner" class="spinner"></span></button>
+</form>

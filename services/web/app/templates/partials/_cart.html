@@ -1,0 +1,51 @@
+{% if error %}
+  <div class="mb-4 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-800 dark:bg-red-950 dark:text-red-200" role="alert">{{ error }}</div>
+{% endif %}
+{% if not cart["items"] %}
+  <div class="card p-10 text-center">
+    <div class="mx-auto h-20 w-20">{% include "partials/_placeholder.html" %}</div>
+    <p class="mt-3 font-semibold">В корзине пока пусто</p>
+    <a href="/shop" class="btn-primary mt-4">Перейти в магазин</a>
+  </div>
+{% else %}
+  <div class="grid gap-6 lg:grid-cols-3">
+    <div class="card divide-y divide-slate-200 lg:col-span-2 dark:divide-slate-700">
+      {% for line in cart["items"] %}
+      <div class="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+        <div class="flex-1">
+          <a href="/shop/{{ line.injector_id }}" class="font-semibold hover:text-brand-600">{{ line.title }}</a>
+          <div class="text-xs text-slate-500">Арт. {{ line.oem_number }} · {{ line.unit_price_kopecks | money }} за шт.</div>
+          {% if not line.available %}
+            <div class="mt-1 text-sm text-red-600 dark:text-red-400">Недоступно в таком количестве (на складе {{ line.stock }}). Измените количество или удалите позицию.</div>
+          {% endif %}
+        </div>
+        <form method="post" action="/cart/items/{{ line.injector_id }}" class="flex items-center gap-2"
+              hx-post="/cart/items/{{ line.injector_id }}" hx-target="#cart" hx-trigger="change">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <label class="sr-only" for="q{{ line.injector_id }}">Количество</label>
+          <input id="q{{ line.injector_id }}" name="quantity" type="number" min="1" max="99" value="{{ line.quantity }}" class="input w-20">
+          <noscript><button class="btn-secondary" type="submit">Обновить</button></noscript>
+        </form>
+        <div class="w-32 text-right font-semibold">{{ line.line_total_kopecks | money }}</div>
+        <form method="post" action="/cart/items/{{ line.injector_id }}/remove"
+              hx-post="/cart/items/{{ line.injector_id }}/remove" hx-target="#cart">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="text-sm text-slate-500 hover:text-red-600" type="submit" aria-label="Удалить {{ line.title }}">Удалить</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+    <aside class="card h-fit p-5">
+      <div class="flex items-baseline justify-between">
+        <span class="text-slate-600 dark:text-slate-400">Итого</span>
+        <span class="text-2xl font-bold">{{ cart["total_kopecks"] | money }}</span>
+      </div>
+      <p class="mt-2 text-xs text-slate-500">После оформления товар резервируется, на оплату даётся 60 минут.</p>
+      <form method="post" action="/checkout" class="mt-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="idem" value="{{ idem }}">
+        <button class="btn-primary w-full" type="submit" {{ 'disabled' if not cart["can_checkout"] }}>Оформить заказ</button>
+      </form>
+    </aside>
+  </div>
+{% endif %}

@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ shop.shop_name }}: дизельные форсунки{% endblock %}</title>
+  <meta name="description" content="{% block description %}Продажа новых и восстановленных дизельных форсунок, ремонт на стенде.{% endblock %}">
+  <link rel="stylesheet" href="/static/css/app.css">
+  <script src="/static/vendor/htmx.min.js" defer></script>
+  <script src="/static/vendor/alpine.min.js" defer></script>
+</head>
+{# Токен CSRF уходит со всеми запросами htmx заголовком; обычные формы содержат его скрытым полем. #}
+<body class="min-h-screen bg-slate-50 font-sans text-slate-800 antialiased dark:bg-slate-900 dark:text-slate-100"
+      hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}' hx-boost="false">
+  <header class="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur dark:border-slate-700 dark:bg-slate-900/90"
+          x-data="{ open: false }">
+    <div class="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
+      <a href="/" class="flex items-center gap-2 text-xl font-bold tracking-tight">
+        <span class="inline-block h-6 w-1.5 rounded bg-brand-600"></span>{{ shop.shop_name }}
+      </a>
+      <nav class="hidden items-center gap-6 text-sm font-medium md:flex" aria-label="Основное меню">
+        <a href="/shop" class="hover:text-brand-600">Магазин</a>
+        <a href="/repair" class="hover:text-brand-600">Ремонт</a>
+        {% if user and user.is_admin %}<a href="/admin/products" class="hover:text-brand-600">Товары</a>{% endif %}
+      </nav>
+      <div class="hidden items-center gap-3 md:flex">
+        {% if user %}
+          <a href="/cart" class="btn-secondary relative" aria-label="Корзина">
+            Корзина
+            <span hx-get="/cart/badge" hx-trigger="load, cart-changed from:body" hx-swap="innerHTML"></span>
+          </a>
+          <a href="/profile" class="text-sm hover:text-brand-600" title="{{ user.email }}">Профиль</a>
+          <form method="post" action="/logout">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="text-sm text-slate-500 hover:text-brand-600" type="submit">Выйти</button>
+          </form>
+        {% else %}
+          <a href="/login" class="text-sm font-medium hover:text-brand-600">Войти</a>
+          <a href="/register" class="btn-primary">Регистрация</a>
+        {% endif %}
+      </div>
+      <button class="rounded-lg p-2 md:hidden" @click="open = !open" :aria-expanded="open" aria-label="Меню">
+        <svg class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+    </div>
+    <div class="border-t border-slate-200 px-4 py-3 md:hidden dark:border-slate-700" x-show="open" x-cloak>
+      <div class="flex flex-col gap-3 text-sm font-medium">
+        <a href="/shop">Магазин</a>
+        <a href="/repair">Ремонт</a>
+        {% if user %}
+          {% if user.is_admin %}<a href="/admin/products">Товары</a>{% endif %}
+          <a href="/cart">Корзина</a>
+          <a href="/profile">Профиль</a>
+          <form method="post" action="/logout">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="text-slate-500">Выйти</button>
+          </form>
+        {% else %}
+          <a href="/login">Войти</a>
+          <a href="/register">Регистрация</a>
+        {% endif %}
+      </div>
+    </div>
+  </header>
+
+  <div id="toast" class="mx-auto max-w-6xl px-4 pt-4" role="status" aria-live="polite">
+    {% for message in flash %}
+      {% include "partials/_flash_item.html" %}
+    {% endfor %}
+  </div>
+
+  <main class="mx-auto max-w-6xl px-4 py-6 sm:py-8">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="mt-12 border-t border-slate-200 bg-white py-8 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900">
+    <div class="mx-auto flex max-w-6xl flex-col gap-4 px-4 sm:flex-row sm:justify-between">
+      <div>
+        <div class="font-semibold text-slate-700 dark:text-slate-200">{{ shop.shop_name }}</div>
+        <div>Дизельные форсунки: продажа и ремонт</div>
+      </div>
+      <div>
+        <div>{{ shop.shop_phone }}</div>
+        <div>{{ shop.shop_email }}</div>
+        <div>{{ shop.shop_address }}</div>
+        <div>{{ shop.shop_hours }}</div>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

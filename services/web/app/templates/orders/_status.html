@@ -1,0 +1,37 @@
+{% set label, color = status_labels[order.status] %}
+{# Пока заказ ждёт оплаты, панель сама запрашивает свежий статус. Оплачен/закрыт: в ответе нет hx-атрибутов, опрос прекращается. #}
+<section id="order-status" class="card mt-4 p-5"
+  {% if order.status == 'PENDING_PAYMENT' %}hx-get="/orders/{{ order.id }}/status" hx-trigger="every 3s" hx-swap="outerHTML"{% endif %}
+  aria-live="polite">
+  <div class="flex flex-wrap items-center gap-3">
+    <span class="badge text-sm
+      {% if color == 'green' %}bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200
+      {% elif color == 'amber' %}bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200
+      {% elif color == 'red' %}bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200
+      {% else %}bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-200{% endif %}">{{ label }}</span>
+    {% if order.status == 'PAID' and order.paid_at %}<span class="text-sm text-slate-500">Оплачен {{ order.paid_at | dt }}</span>{% endif %}
+  </div>
+
+  {% if order.status == 'PENDING_PAYMENT' %}
+    {% if payment and payment.status == 'PENDING' and payment.pay_url %}
+      <p class="mt-3 text-sm text-slate-600 dark:text-slate-400">Оплатите заказ до {{ order.expires_at | dt }}, иначе он будет закрыт, а товар вернётся на склад.</p>
+      <div class="mt-4 flex flex-wrap items-center gap-3">
+        <a href="{{ payment.pay_url }}" class="btn-primary">Перейти к оплате</a>
+        <form method="post" action="/orders/{{ order.id }}/cancel">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn-danger" type="submit">Отменить заказ</button>
+        </form>
+      </div>
+    {% else %}
+      <p class="mt-3 flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400"><span class="spinner" style="display:inline-block"></span> Готовим платёж, это займёт несколько секунд…</p>
+    {% endif %}
+  {% elif order.status == 'PAID' %}
+    <p class="mt-3 text-sm text-slate-600 dark:text-slate-400">Спасибо за заказ! Подтверждение отправлено на вашу почту.</p>
+  {% elif order.status == 'PAYMENT_FAILED' %}
+    <p class="mt-3 text-sm text-slate-600 dark:text-slate-400">Банк отклонил платёж. Товар возвращён на склад, вы можете оформить заказ заново.</p>
+  {% elif order.status == 'EXPIRED' %}
+    <p class="mt-3 text-sm text-slate-600 dark:text-slate-400">Время на оплату вышло, заказ закрыт, а товар возвращён на склад.</p>
+  {% elif order.status == 'CANCELLED' %}
+    <p class="mt-3 text-sm text-slate-600 dark:text-slate-400">Заказ отменён, товар возвращён на склад.</p>
+  {% endif %}
+</section>

@@ -1,0 +1,25 @@
+<a href="/shop/{{ i.id }}" class="card group flex flex-col overflow-hidden transition hover:shadow-md">
+  <div class="aspect-[4/3] bg-slate-100 p-4 dark:bg-slate-700/40">
+    {% if i.image_url %}
+      <img src="{{ i.image_url }}" alt="{{ i.title }}" loading="lazy" class="h-full w-full object-contain">
+    {% else %}
+      {% include "partials/_placeholder.html" %}
+    {% endif %}
+  </div>
+  <div class="flex flex-1 flex-col gap-2 p-4">
+    <div class="flex flex-wrap gap-1.5">
+      <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200">{{ i.manufacturer.name }}</span>
+      <span class="badge {% if i.condition == 'new' %}bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200{% else %}bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200{% endif %}">{{ condition_labels[i.condition] }}</span>
+    </div>
+    <h3 class="font-semibold leading-snug group-hover:text-brand-600">{{ i.title }}</h3>
+    <div class="text-xs text-slate-500">Арт. {{ i.oem_number }}</div>
+    <div class="mt-auto flex items-end justify-between pt-2">
+      <div class="text-lg font-bold">{{ i.price_kopecks | money }}</div>
+      {% if i.stock > 0 %}
+        <span class="text-xs text-green-700 dark:text-green-400">В наличии</span>
+      {% else %}
+        <span class="text-xs text-slate-500">Нет в наличии</span>
+      {% endif %}
+    </div>
+  </div>
+</a>

@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Изменение товара' if item else 'Новый товар' }}: {{ shop.shop_name }}{% endblock %}
+{% block content %}
+<nav class="mb-4 text-sm text-slate-500" aria-label="Навигация"><a href="/admin/products" class="hover:text-brand-600">← Все товары</a></nav>
+<h1 class="text-2xl font-bold">{{ 'Изменение товара' if item else 'Новый товар' }}</h1>
+
+<div class="mt-4 grid gap-6 lg:grid-cols-3">
+  <form method="post" action="{{ '/admin/products/' ~ item.id if item else '/admin/products' }}" class="card space-y-4 p-5 lg:col-span-2">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {% if form_errors and form_errors.get('_') %}<div class="rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-900 dark:border-red-800 dark:bg-red-950 dark:text-red-200" role="alert">{{ form_errors['_'] }}</div>{% endif %}
+    <div class="grid gap-4 sm:grid-cols-2">
+      <div>
+        <label class="label" for="oem_number">Артикул (OEM) *</label>
+        <input id="oem_number" name="oem_number" class="input" required minlength="3" maxlength="64" value="{{ values.oem_number or '' }}">
+        {% if form_errors.oem_number %}<p class="field-error">{{ form_errors.oem_number }}</p>{% endif %}
+      </div>
+      <div>
+        <label class="label" for="manufacturer_id">Производитель *</label>
+        <select id="manufacturer_id" name="manufacturer_id" class="input" required>
+          <option value="">Выберите…</option>
+          {% for m in manufacturers %}<option value="{{ m.id }}" {{ 'selected' if values.manufacturer_id|string == m.id|string }}>{{ m.name }}</option>{% endfor %}
+        </select>
+        {% if form_errors.manufacturer_id %}<p class="field-error">{{ form_errors.manufacturer_id }}</p>{% endif %}
+      </div>
+      <div class="sm:col-span-2">
+        <label class="label" for="title">Название *</label>
+        <input id="title" name="title" class="input" required minlength="2" maxlength="200" value="{{ values.title or '' }}">
+        {% if form_errors.title %}<p class="field-error">{{ form_errors.title }}</p>{% endif %}
+      </div>
+      <div>
+        <label class="label" for="type">Тип *</label>
+        <select id="type" name="type" class="input">
+          {% for key, label in type_labels.items() %}<option value="{{ key }}" {{ 'selected' if values.type == key }}>{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="label" for="condition">Состояние *</label>
+        <select id="condition" name="condition" class="input">
+          {% for key, label in condition_labels.items() %}<option value="{{ key }}" {{ 'selected' if values.condition == key }}>{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="label" for="price">Цена, ₽ *</label>
+        <input id="price" name="price" inputmode="decimal" class="input" required value="{{ values.price }}" placeholder="45000,00">
+        {% if form_errors.price or form_errors.price_kopecks %}<p class="field-error">{{ form_errors.price or form_errors.price_kopecks }}</p>{% endif %}
+      </div>
+      <div>
+        <label class="label" for="stock">Остаток, шт. *</label>
+        <input id="stock" name="stock" type="number" min="0" class="input" required value="{{ values.stock }}">
+        {% if form_errors.stock %}<p class="field-error">{{ form_errors.stock }}</p>{% endif %}
+      </div>
+      <div class="sm:col-span-2">
+        <label class="label" for="description">Описание</label>
+        <textarea id="description" name="description" rows="4" class="input" maxlength="5000">{{ values.description or '' }}</textarea>
+      </div>
+      <div class="sm:col-span-2">
+        <label class="label" for="engines">Применимость (по одному двигателю в строке)</label>
+        <textarea id="engines" name="engines" rows="4" class="input" placeholder="Mercedes-Benz OM651 2.1 CDI">{{ values.engines or '' }}</textarea>
+      </div>
+      <label class="flex items-center gap-2 text-sm sm:col-span-2">
+        <input type="checkbox" name="is_active" value="1" {{ 'checked' if values.is_active }} class="h-4 w-4 rounded border-slate-300">
+        Показывать в магазине (снимите галочку, чтобы скрыть товар)
+      </label>
+    </div>
+    <button class="btn-primary" type="submit">Сохранить</button>
+  </form>
+
+  {% if item %}
+  <aside class="card h-fit space-y-3 p-5">
+    <h2 class="font-semibold">Картинка</h2>
+    <div class="aspect-square bg-slate-100 p-4 dark:bg-slate-700/40">
+      {% if item.image_url %}<img src="{{ item.image_url }}" alt="" class="h-full w-full object-contain">{% else %}{% include "partials/_placeholder.html" %}{% endif %}
+    </div>
+    <form method="post" action="/admin/products/{{ item.id }}/image" enctype="multipart/form-data" class="space-y-2">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="file" name="file" accept="image/jpeg,image/png,image/webp" required class="block w-full text-sm">
+      <p class="text-xs text-slate-500">JPEG, PNG или WebP до 2 МБ.</p>
+      <button class="btn-secondary" type="submit">Загрузить</button>
+    </form>
+    <a href="/shop/{{ item.id }}" class="text-sm text-brand-600 hover:underline">Открыть в магазине</a>
+  </aside>
+  {% endif %}
+</div>
+{% endblock %}

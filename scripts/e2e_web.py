@@ -1,0 +1,138 @@
+"""Сквозной сценарий через сайт (`make up`): тот же путь, что проходит покупатель в браузере.
+
+Запуск: `make e2e`. Главная -> регистрация -> магазин -> товар -> корзина -> заказ -> оплата на странице провайдера ->
+статус «Оплачен» -> заказ в истории профиля. Проверяется и то, что в cookie только id сессии.
+"""
+
+import re
+import sys
+import time
+import uuid
+
+import httpx
+
+WEB = "http://localhost:8000"
+PASSWORD = "e2e-pass-12345"  # noqa: S105  (тестовый пароль одноразового пользователя)
+HTMX = {"HX-Request": "true"}
+
+
+def step(message: str) -> None:
+    print(f"  ok  {message}")
+
+
+def fail(message: str) -> None:
+    print(f"FAIL  {message}")
+    sys.exit(1)
+
+
+def csrf(html: str) -> str:
+    found = re.search(r'name="csrf_token" value="([^"]+)"', html)
+    if not found:
+        fail("на странице нет csrf_token")
+        raise SystemExit(1)
+    return found.group(1)
+
+
+def main() -> None:
+    client = httpx.Client(base_url=WEB, timeout=15)
+
+    home = client.get("/")
+    if home.status_code != 200 or "Перейти в магазин" not in home.text:
+        fail(f"главная не открылась: {home.status_code}")
+    step("главная открывается")
+
+    # Регистрация (после неё пользователь сразу вошёл).
+    email = f"web-{uuid.uuid4().hex[:10]}@example.com"
+    token = csrf(client.get("/register").text)
+    response = client.post(
+        "/register",
+        data={"email": email, "password": PASSWORD, "password2": PASSWORD, "csrf_token": token},
+    )
+    if response.status_code != 303:
+        fail(f"регистрация не удалась: {response.status_code}")
+    cookie = client.cookies.get("sid") or ""
+    if "." in cookie or "eyJ" in cookie:
+        fail("в cookie похоже на токен, а не на случайный id")
+    step("регистрация и вход, в cookie только id сессии")
+
+    # Магазин и карточка.
+    shop = client.get("/shop", params={"condition": "new"})
+    card = re.search(r'href="/shop/(\d+)"', shop.text)
+    if not card:
+        fail("в магазине нет товаров (выполните make seed)")
+        raise SystemExit(1)
+    product = client.get(f"/shop/{card.group(1)}")
+    token = csrf(product.text)
+    if "В корзину" not in product.text:
+        fail("товар нет в наличии: возьмите другой каталог (make seed)")
+    step("магазин и карточка товара открываются")
+
+    # Корзина.
+    added = client.post(
+        "/cart/add",
+        data={"injector_id": card.group(1), "quantity": "1"},
+        headers={**HTMX, "X-CSRF-Token": token},
+    )
+    if "Добавлено в корзину" not in added.text:
+        fail("товар не добавлен в корзину")
+    cart = client.get("/cart")
+    key = re.search(r'name="idem" value="([^"]+)"', cart.text)
+    if not key:
+        fail("в корзине нет формы оформления")
+        raise SystemExit(1)
+    step("товар в корзине")
+
+    # Заказ (дважды с тем же ключом: заказ должен быть один).
+    first = client.post("/checkout", data={"csrf_token": token, "idem": key.group(1)})
+    again = client.post("/checkout", data={"csrf_token": token, "idem": key.group(1)})
+    order_path = first.headers.get("location", "")
+    if first.status_code != 303 or not order_path.startswith("/orders/"):
+        fail(f"заказ не оформлен: {first.status_code}")
+    if again.status_code == 303 and again.headers.get("location") != order_path:
+        fail("повторная отправка формы создала второй заказ")
+    step("заказ оформлен, повторная отправка формы не создаёт второй")
+
+    # Платёж: воркер создаёт его асинхронно, страница опрашивает статус.
+    pay_url = ""
+    deadline = time.monotonic() + 40
+    while time.monotonic() < deadline:
+        panel = client.get(f"{order_path}/status", headers=HTMX).text
+        found = re.search(r'href="(http[^"]*/pay/[^"]+)"', panel)
+        if found:
+            pay_url = found.group(1)
+            break
+        time.sleep(0.7)
+    if not pay_url:
+        fail("не дождались ссылки на оплату")
+    step("воркер создал платёж, на странице заказа появилась кнопка оплаты")
+
+    httpx.post(f"{pay_url}/confirm", follow_redirects=True, timeout=15)
+    paid = False
+    deadline = time.monotonic() + 40
+    while time.monotonic() < deadline:
+        panel = client.get(f"{order_path}/status", headers=HTMX).text
+        if "Оплачен" in panel:
+            paid = "hx-trigger" not in panel  # после оплаты опрос на странице прекращается
+            break
+        time.sleep(0.7)
+    if not paid:
+        fail("заказ не стал оплаченным или страница продолжает опрос")
+    step("оплата на странице провайдера, заказ «Оплачен», опрос остановлен")
+
+    profile = client.get("/profile")
+    number = order_path.rsplit("/", 1)[1][:8].upper()
+    if number not in profile.text or "Оплачен" not in profile.text:
+        fail("оплаченный заказ не виден в истории профиля")
+    step("заказ виден в истории профиля")
+
+    # Выход.
+    token = csrf(profile.text)
+    client.post("/logout", data={"csrf_token": token})
+    if client.get("/profile").status_code != 303:
+        fail("после выхода профиль остался доступен")
+    step("выход закрывает сессию")
+    print("Все проверки пройдены")
+
+
+if __name__ == "__main__":
+    main()
