@@ -76,7 +76,7 @@ services:
       - fluent_bit_data:/var/lib/fluent-bit
 
   s3_logs_init:
-    image: amazon/aws-cli:2.22.0
+    image: amazon/aws-cli:2.39.6
     profiles: [logging]
     restart: "no"
     entrypoint:
