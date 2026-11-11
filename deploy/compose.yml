@@ -118,7 +118,7 @@ services:
     logging: *default-logging
 
   rabbitmq:
-    image: rabbitmq:4.0.4-management-alpine
+    image: rabbitmq:4.4.0-management-alpine
     restart: unless-stopped
     init: true
     stop_grace_period: 30s
