@@ -3,7 +3,7 @@
 # Контекст сборки: корень репозитория.
 #   docker build -f services/api/Dockerfile -t forsunki-api .
 
-ARG PYTHON_VERSION=3.12.8
+ARG PYTHON_VERSION=3.12.16
 
 # --- Стадия сборки: зависимости ставим в venv, который потом копируем целиком ---
 FROM python:${PYTHON_VERSION}-slim-bookworm AS builder

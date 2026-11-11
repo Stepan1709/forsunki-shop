@@ -1,0 +1,240 @@
+name: CI
+
+# Запускается на каждом PR и на каждом слиянии в main. Порядок проверок от дешёвых к дорогим:
+#   lint (ruff, mypy) и проверка конфигурации  ->  тесты с порогом покрытия  ->  сборка образов и их сканирование (Trivy)
+#   ->  сквозные сценарии на настоящем compose-стеке (dev и prod с nginx/HTTPS) и проверка восстановления бэкапа.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Новый коммит в том же PR отменяет устаревший запуск.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  UV_VERSION: "0.5.14"   # та же версия, что в Dockerfile
+
+jobs:
+  lint:
+    name: lint (${{ matrix.service }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [api, web, payment_stub]
+    defaults:
+      run:
+        working-directory: services/${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: services/${{ matrix.service }}/uv.lock
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy app tests
+
+  config:
+    name: проверка конфигурации (compose, workflows)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ротация логов и метки у всех сервисов compose (dev и prod)
+        run: |
+          make env
+          python3 scripts/check_compose.py
+      - name: actionlint (синтаксис workflows)
+        uses: docker://rhysd/actionlint:1.7.4
+        with:
+          args: -color
+
+  test:
+    name: тесты (${{ matrix.service }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Порог ниже текущего покрытия на несколько пунктов: он ловит провал, а не мешает работать.
+          # Текущее (строки+ветки): api 94%, web 86%, payment_stub 91%.
+          - {service: api, threshold: 90}
+          - {service: web, threshold: 82}
+          - {service: payment_stub, threshold: 85}
+    defaults:
+      run:
+        working-directory: services/${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: services/${{ matrix.service }}/uv.lock
+      - run: uv sync --frozen
+      # Интеграционные тесты поднимают настоящие Postgres, Redis, RabbitMQ и S3 через Testcontainers (docker есть на раннере).
+      - run: uv run pytest --cov-fail-under=${{ matrix.threshold }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.service }}
+          path: services/${{ matrix.service }}/coverage.xml
+          retention-days: 7
+
+  build:
+    name: образ ${{ matrix.image }} (сборка и Trivy)
+    runs-on: ubuntu-24.04
+    needs: [lint, test]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {image: api, dockerfile: services/api/Dockerfile, tag: "forsunki-api:dev"}
+          - {image: web, dockerfile: services/web/Dockerfile, tag: "forsunki-web:dev"}
+          - {image: payment-stub, dockerfile: services/payment_stub/Dockerfile, tag: "forsunki-payment-stub:dev"}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      # Секретов времени сборки нет: образы собираются из публичных зависимостей. Если появится приватный индекс пакетов,
+      # он передаётся через `secrets:` (BuildKit), а не через ARG.
+      - name: Сборка (кэш слоёв BuildKit в GitHub Actions)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          tags: ${{ matrix.tag }}
+          load: true
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+      - name: Trivy, отчёт (CRITICAL и HIGH, только с доступным исправлением)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ matrix.tag }}
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "0"
+      - name: Trivy, провал сборки при CRITICAL с доступным исправлением
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ matrix.tag }}
+          format: table
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Сохранить образ для сквозных проверок
+        run: docker save "${{ matrix.tag }}" | gzip > image-${{ matrix.image }}.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image-${{ matrix.image }}
+          path: image-${{ matrix.image }}.tar.gz
+          retention-days: 1
+
+  e2e:
+    name: сквозные сценарии (dev-стек)
+    runs-on: ubuntu-24.04
+    needs: [build]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: image-*
+          merge-multiple: true
+      - name: Загрузить образы, собранные в предыдущем шаге
+        run: for f in image-*.tar.gz; do docker load -i "$f"; done
+      - name: Поднять стек (образы уже собраны, пересборка не нужна)
+        run: |
+          make env secrets
+          docker compose --env-file .env -f deploy/compose.yml -f deploy/compose.dev.yml up -d --wait --no-build
+      - run: make seed COUNT=500
+      - run: make e2e
+      - name: Резервная копия Postgres и проверка восстановления
+        run: |
+          make backup
+          make backup-verify
+      - name: Логи при падении
+        if: failure()
+        run: docker compose --env-file .env -f deploy/compose.yml -f deploy/compose.dev.yml logs --tail=200
+
+  prod-smoke:
+    name: "сквозной сценарий (prod, nginx и HTTPS)"
+    runs-on: ubuntu-24.04
+    needs: [build]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: image-*
+          merge-multiple: true
+      - name: Загрузить образы и назвать их как в реестре
+        run: |
+          for f in image-*.tar.gz; do docker load -i "$f"; done
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          docker tag forsunki-api:dev "ghcr.io/${owner}/forsunki-api:local"
+          docker tag forsunki-web:dev "ghcr.io/${owner}/forsunki-web:local"
+          docker tag forsunki-payment-stub:dev "ghcr.io/${owner}/forsunki-payment-stub:local"
+      - name: Поднять prod-конфигурацию
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          make env prod-secrets tls
+          make prod-up GHCR_OWNER="${owner}"
+      - run: make prod-seed COUNT=300 GHCR_OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+      - run: make prod-e2e
+      - name: Логи при падении
+        if: failure()
+        run: docker compose -p forsunki-prod --env-file .env -f deploy/compose.yml -f deploy/compose.prod.yml logs --tail=200
+        env:
+          TAG: local
+          SECRETS_DIR: ./secrets/prod
+
+  coverage-badge:
+    name: бейдж покрытия
+    runs-on: ubuntu-24.04
+    needs: [test]
+    # Только после слияния в main: PR не должен менять бейдж.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-*
+      - name: Нарисовать бейдж
+        run: >
+          python3 scripts/coverage_badge.py
+          coverage-api/coverage.xml coverage-web/coverage.xml coverage-payment_stub/coverage.xml
+          > "$RUNNER_TEMP/coverage.svg"
+      - name: Записать в ветку badges
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin badges >/dev/null 2>&1; then
+            git fetch origin badges
+            git checkout -f -B badges origin/badges
+          else
+            git checkout --orphan badges
+            git rm -rf --quiet .
+          fi
+          cp "$RUNNER_TEMP/coverage.svg" coverage.svg
+          git add coverage.svg
+          if git diff --cached --quiet; then
+            echo "бейдж не изменился"
+          else
+            git commit -m "chore: обновить бейдж покрытия"
+            git push origin badges
+          fi

@@ -1,5 +1,8 @@
 # ForsunkiShop
 
+[![CI](https://github.com/Stepan1709/forsunki-shop/actions/workflows/ci.yml/badge.svg)](https://github.com/Stepan1709/forsunki-shop/actions/workflows/ci.yml)
+![coverage](https://raw.githubusercontent.com/Stepan1709/forsunki-shop/badges/coverage.svg)
+
 Интернет-магазин дизельных форсунок со страницей ремонта. Асинхронный бэкенд на Python (FastAPI, PostgreSQL, Redis,
 RabbitMQ) с надёжной обработкой заказов, идемпотентными запросами, структурированными логами и воспроизводимой
 инфраструктурой на Docker Compose.
@@ -354,6 +357,28 @@ make prod-down
 **Резервные копии Postgres.** Профиль `backup` (контейнер с `pg_dump`): копия в формате `-Fc` и JSON с версией миграций и числом строк в S3-бакет `forsunki-backups`, раз в сутки, хранение 14 дней
 (`BACKUP_INTERVAL_HOURS`, `BACKUP_KEEP_DAYS`). `make backup` делает разовую копию, `make backup-verify` восстанавливает последнюю во временную БД и сверяет версию миграций и число строк.
 Проверка на dev-данных (18,5 тыс. форсунок, 3,8 тыс. заказов): копия 2,9 МБ за 2 секунды, восстановление прошло, все таблицы совпали.
+
+## CI/CD
+
+**CI** (`.github/workflows/ci.yml`) запускается на каждом PR и на каждом слиянии в `main`:
+
+1. `lint`: ruff и mypy для трёх сервисов; `config`: ротация логов в dev- и prod-конфигурации compose, `actionlint` для самих workflows.
+2. `тесты`: unit и интеграционные (Testcontainers с настоящими Postgres, Redis, RabbitMQ и S3) с порогом покрытия: api 90%, web 82%, payment_stub 85% (строки и ветки; сейчас 94%, 86%, 91%).
+3. `build`: сборка образов с кэшем слоёв BuildKit и сканирование Trivy. Сборка падает на CRITICAL с доступным исправлением; HIGH попадают в отчёт.
+4. `e2e`: dev-стек на собранных образах, `make e2e`, затем бэкап Postgres и проверка его восстановления.
+5. `prod-smoke`: prod-конфигурация (nginx, HTTPS, образы по тегу) и весь путь покупателя через неё.
+6. После слияния в `main` бейдж покрытия обновляется в служебной ветке `badges` (без внешних сервисов).
+
+**Релиз** (`.github/workflows/release.yml`). После успешного CI на `main` образы публикуются в GHCR (`ghcr.io/<владелец>/forsunki-{api,web,payment-stub}`, теги `sha-<коммит>` и `latest`);
+по тегу `v*` публикуется образ с этим тегом. Затем, если заданы секреты окружения `production`, конфигурация (`deploy/`) синхронизируется на сервер и запускается `deploy.sh up <тег>`:
+скрипт ждёт здоровья сервисов и сам откатывается при неудаче. Ручной запуск workflow (`Actions -> Release -> Run workflow`) умеет `deploy` указанного тега и `rollback` на предыдущий тег.
+Без секретов выкатки публикуются только образы.
+
+Секреты выкатки: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PATH` (каталог проекта на сервере), `DEPLOY_SSH_KEY` (закрытый ключ только для выкатки) и `DEPLOY_KNOWN_HOSTS`
+(отпечаток сервера, строка из `ssh-keyscan`, чтобы ssh не соглашался на любой сервер). На сервере один раз: установить Docker, создать `DEPLOY_PATH/deploy/secrets` (права 600),
+`DEPLOY_PATH/deploy/tls` и войти в реестр: `docker login ghcr.io` с токеном `read:packages`.
+
+**Dependabot** (`.github/dependabot.yml`) раз в неделю присылает PR с обновлениями Python-зависимостей (uv), базовых образов, образов в compose и действий GitHub Actions; каждый проходит тот же CI.
 
 ## Производительность
 
