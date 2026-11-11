@@ -69,7 +69,7 @@ volumes:
 
 services:
   postgres:
-    image: postgres:16.6-alpine
+    image: postgres:18.4-alpine
     restart: unless-stopped
     init: true
     stop_grace_period: 30s
