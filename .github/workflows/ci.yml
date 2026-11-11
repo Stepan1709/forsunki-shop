@@ -31,8 +31,8 @@ jobs:
       run:
         working-directory: services/${{ matrix.service }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
@@ -46,7 +46,7 @@ jobs:
     name: проверка конфигурации (compose, workflows)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Ротация логов и метки у всех сервисов compose (dev и prod)
         run: |
           make env
@@ -72,8 +72,8 @@ jobs:
       run:
         working-directory: services/${{ matrix.service }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
@@ -81,7 +81,7 @@ jobs:
       - run: uv sync --frozen
       # Интеграционные тесты поднимают настоящие Postgres, Redis, RabbitMQ и S3 через Testcontainers (docker есть на раннере).
       - run: uv run pytest --cov-fail-under=${{ matrix.threshold }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: coverage-${{ matrix.service }}
           path: services/${{ matrix.service }}/coverage.xml
@@ -99,12 +99,12 @@ jobs:
           - {image: web, dockerfile: services/web/Dockerfile, tag: "forsunki-web:dev"}
           - {image: payment-stub, dockerfile: services/payment_stub/Dockerfile, tag: "forsunki-payment-stub:dev"}
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
       # Секретов времени сборки нет: образы собираются из публичных зависимостей. Если появится приватный индекс пакетов,
       # он передаётся через `secrets:` (BuildKit), а не через ARG.
       - name: Сборка (кэш слоёв BuildKit в GitHub Actions)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ${{ matrix.dockerfile }}
@@ -130,7 +130,7 @@ jobs:
           exit-code: "1"
       - name: Сохранить образ для сквозных проверок
         run: docker save "${{ matrix.tag }}" | gzip > image-${{ matrix.image }}.tar.gz
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: image-${{ matrix.image }}
           path: image-${{ matrix.image }}.tar.gz
@@ -142,11 +142,11 @@ jobs:
     needs: [build]
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           version: ${{ env.UV_VERSION }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: image-*
           merge-multiple: true
@@ -172,11 +172,11 @@ jobs:
     needs: [build]
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           version: ${{ env.UV_VERSION }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: image-*
           merge-multiple: true
@@ -210,8 +210,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           pattern: coverage-*
       - name: Нарисовать бейдж
