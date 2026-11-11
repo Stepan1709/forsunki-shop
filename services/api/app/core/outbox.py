@@ -49,6 +49,8 @@ class OutboxMessage(Base):
             "created_at",
             postgresql_where="sent_at IS NULL",
         ),
+        # Для чистки: поиск отправленных событий старше срока хранения (миграция 0010).
+        Index("ix_outbox_sent_at", "sent_at", postgresql_where="sent_at IS NOT NULL"),
     )
 
 

@@ -21,7 +21,7 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import Header
-from sqlalchemy import DateTime, ForeignKey, Integer, String, func, update
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, func, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,6 +46,8 @@ class IdempotencyRecord(Base):
     response_status: Mapped[int | None] = mapped_column(Integer, default=None)
     response_body: Mapped[dict[str, Any] | None] = mapped_column(JSONB, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (Index("ix_idempotency_keys_created_at", "created_at"),)
 
 
 def get_idempotency_key(

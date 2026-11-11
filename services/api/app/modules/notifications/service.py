@@ -86,6 +86,24 @@ class NotificationService:
             user_id, order_id, total_kopecks, "order_expired", "Заказ № {number} закрыт: не оплачен"
         )
 
+    async def order_payment_failed(
+        self, user_id: uuid.UUID, order_id: uuid.UUID, total_kopecks: int
+    ) -> None:
+        await self._order_mail(
+            user_id,
+            order_id,
+            total_kopecks,
+            "order_payment_failed",
+            "Заказ № {number}: оплата не прошла",
+        )
+
+    async def order_cancelled(
+        self, user_id: uuid.UUID, order_id: uuid.UUID, total_kopecks: int
+    ) -> None:
+        await self._order_mail(
+            user_id, order_id, total_kopecks, "order_cancelled", "Заказ № {number} отменён"
+        )
+
     async def _order_mail(
         self,
         user_id: uuid.UUID,

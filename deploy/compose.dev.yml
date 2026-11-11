@@ -107,6 +107,9 @@ services:
     environment:
       # Куда провайдер возвращает покупателя после оплаты: страница заказа на сайте.
       PAYMENT_RETURN_URL: http://localhost:8000/orders/{order_id}
+      # Сквозные скрипты (make e2e, make chaos) регистрируют десятки пользователей с одного адреса; штатный лимит
+      # (5 в час) в dev ослаблен. В prod он остаётся прежним.
+      REGISTER_IP_LIMIT: "100"
     depends_on:
       s3: {condition: service_healthy}
       payment_stub: {condition: service_healthy}

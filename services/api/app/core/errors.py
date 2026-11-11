@@ -1,5 +1,6 @@
 """Единый формат ошибок API: Problem Details (RFC 9457, application/problem+json)."""
 
+import socket
 from http import HTTPStatus
 from typing import Any
 
@@ -7,6 +8,8 @@ import structlog
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import InterfaceError, OperationalError
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.correlation import CORRELATION_HEADER, current_correlation_id
@@ -116,7 +119,31 @@ async def _unhandled(_request: Request, exc: Exception) -> JSONResponse:
     return problem_response(500, "Внутренняя ошибка сервера")
 
 
+async def _dependency_unavailable(_request: Request, exc: Exception) -> JSONResponse:
+    """БД (или другая зависимость) недоступна: это 503 с Retry-After, а не 500.
+
+    Клиент и балансировщик по 503 понимают, что запрос можно повторить позже и что виноват не сам запрос. Подробности только в лог.
+    """
+    log.error("dependency_unavailable", error=type(exc).__name__)
+    return problem_response(
+        503, "Сервис временно недоступен, повторите запрос позже", headers={"Retry-After": "5"}
+    )
+
+
+# Ошибки соединения с БД: отказ в подключении, обрыв, исчерпание пула. Бизнес-ошибки SQL (нарушение ограничений и т.п.)
+# сюда не относятся и остаются 500.
+_UNAVAILABLE = (
+    OperationalError,
+    InterfaceError,
+    PoolTimeoutError,
+    ConnectionError,
+    socket.gaierror,
+)
+
+
 def install_error_handlers(app: FastAPI) -> None:
+    for exc_type in _UNAVAILABLE:
+        app.add_exception_handler(exc_type, _dependency_unavailable)
     app.add_exception_handler(StarletteHTTPException, _http_exception)
     app.add_exception_handler(RequestValidationError, _validation_error)
     app.add_exception_handler(AppError, _app_error)

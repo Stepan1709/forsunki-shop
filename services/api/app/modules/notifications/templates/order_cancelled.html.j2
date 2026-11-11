@@ -1,0 +1,6 @@
+{% extends "_base.html.j2" %}
+{% block content %}
+<p>Здравствуйте!</p>
+<p>Заказ <b>№ {{ number }}</b> на сумму {{ total }} отменён, товар возвращён на склад.</p>
+<p>Если заказ понадобится снова, <a href="{{ shop_url }}/catalog" style="color:#e0762b">оформите его заново</a>.</p>
+{% endblock %}

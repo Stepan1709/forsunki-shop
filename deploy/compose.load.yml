@@ -1,0 +1,33 @@
+# Нагрузочный тест (`make load`). Накладывается поверх compose.yml и compose.dev.yml только на время замеров.
+#
+# Что меняется:
+#  * лимиты регистрации и входа по IP сильно повышены: все виртуальные пользователи Locust приходят с одного адреса,
+#    а штатный лимит (5 регистраций в час) отсёк бы их сразу. Это ровно то, что лимит и должен делать в бою,
+#    поэтому в обычном запуске он остаётся прежним, а `make load` после замеров возвращает стек в исходный вид;
+#  * добавляется сервис locust в профиле load: он живёт в сети backend и ходит в api и заглушку по внутренним именам.
+services:
+  api:
+    environment:
+      REGISTER_IP_LIMIT: "1000000"
+      LOGIN_IP_LIMIT: "1000000"
+
+  locust:
+    image: locustio/locust:2.32.5
+    profiles: [load]
+    environment:
+      API_URL: http://api:8000
+      STUB_URL: http://payment_stub:8000
+      CACHE_MODE: ${CACHE_MODE:-warm}
+    volumes:
+      - ../loadtest:/mnt/locust
+    working_dir: /mnt/locust
+    depends_on:
+      api: {condition: service_healthy}
+      payment_stub: {condition: service_healthy}
+    networks: [backend]
+    deploy:
+      resources:
+        limits: {cpus: "2.0", memory: 512M}
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3", labels: "com.docker.compose.service"}
