@@ -49,7 +49,8 @@ flowchart LR
 | PostgreSQL, Redis, RabbitMQ, S3-хранилище | данные, кэш и лимиты, очереди, картинки | работают |
 | `payment_stub` | заглушка платёжного провайдера (страница оплаты, подписанные webhook'и) | работает |
 | `web` | сайт: Jinja2 + HTMX + Alpine.js + Tailwind, сессии в Redis (BFF) | работает |
-| nginx, Fluent Bit + Elasticsearch + Kibana, Prometheus + Grafana | вход, логи, метрики | в разработке |
+| Fluent Bit, Elasticsearch, Kibana, S3 | сбор, поиск и архив логов (профиль `logging`) | работают |
+| nginx, Prometheus + Grafana | вход, метрики | в разработке |
 
 ## Быстрый старт
 
@@ -57,7 +58,9 @@ flowchart LR
 
 ```bash
 make secrets   # случайные пароли в deploy/secrets/dev (не коммитятся)
-make up        # postgres, redis, rabbitmq, api, worker, S3-хранилище + Adminer, Mailpit
+make up        # postgres, redis, rabbitmq, api, worker, web, S3-хранилище + Adminer, Mailpit
+make up-full   # то же + Fluent Bit, Elasticsearch, Kibana (нужно около 2,5 ГБ памяти)
+make check-compose # проверить ротацию логов у всех сервисов
 make e2e       # сквозные сценарии: заказ и оплата, путь покупателя через сайт
 make seed      # заполнить каталог демо-данными (make seed COUNT=20000)
 make down
@@ -66,6 +69,7 @@ make down
 | Сервис | Адрес |
 |---|---|
 | Сайт | http://localhost:8000 |
+| Kibana (после `make up-full`) | http://localhost:5601 (дашборд «Forsunki: обзор логов» открывается по умолчанию) |
 | API (Swagger) | http://localhost:8001/docs |
 | Админка каталога | http://localhost:8001/admin (вход под пользователем с ролью admin) |
 | Страница оплаты (заглушка) | http://localhost:8002 (ссылка на оплату приходит из `GET /orders/{id}/payment`) |
@@ -199,6 +203,49 @@ user.registered / order.paid / order.expired -> очередь на каждое
 | статика и шрифты | ничего не загружается с внешних сайтов: HTMX и Alpine лежат в репозитории, Tailwind собирается отдельной стадией Docker-образа с проверкой хэша бинарника |
 
 Без JavaScript сайт тоже работает: формы отправляются обычными POST с перенаправлением, htmx только убирает перезагрузки.
+
+**Логи.**
+
+```
+контейнер -> stdout (JSON, structlog) -> Docker json-file (ротация 10 МБ x 3) -> Fluent Bit (tail, запоминает позицию)
+   -> Elasticsearch: индекс forsunki-logs-ГГГГ.ММ.ДД, ILM удаляет через 7 дней -> Kibana (дашборд, поиск)
+   -> S3: service=<сервис>/date=<дата>/<время>-<uuid>.json.gz, lifecycle удаляет через 30 дней
+```
+
+| Что | Как |
+|---|---|
+| ротация | `max-size: 10m`, `max-file: 3` на каждом контейнере; `make check-compose` падает, если у сервиса нет ротации |
+| какой сервис написал строку | Docker кладёт имя сервиса compose в запись (label), поэтому видно и Postgres, и RabbitMQ, у которых нет JSON-логов |
+| парсинг | JSON приложений (`api`, `web`, `worker`, `payment_stub`) раскладывается по полям, прочие строки попадают в `message` |
+| не теряются при сбое | Fluent Bit буферизует на диск и запоминает позицию чтения: после перезапуска или недоступности Elasticsearch ничего не пропадает и не читается заново |
+| хранение | Elasticsearch 7 дней (политика ILM `forsunki-logs-retention`), S3 30 дней (правило lifecycle), Docker 30 МБ на контейнер |
+| секреты в логах | пароли, токены, cookie и CSRF-токены маскируются (`***`) на уровне приложения |
+
+**Как найти путь заказа по `correlation_id`.** Каждый запрос получает `X-Request-ID` (или принимает его от nginx), он передаётся
+из `web` в `api`, а оттуда в сообщения RabbitMQ и в логи воркера. В Kibana откройте сохранённый поиск «Цепочка запроса» (или
+Discover с data view `forsunki-logs-*`) и введите:
+
+```
+correlation_id : "c37330fa1c6746c5a3c1d8204a2a6f4f"
+```
+
+Строки идут по времени: `web` (POST /checkout) -> `api` (order_created, POST /orders) -> `worker` (payment_created) -> `api` (POST /payments/webhook).
+Найти нужный id можно по заказу: `event : "order_created" and order_id : "<uuid>"`. Другие полезные запросы:
+
+| Запрос KQL | Что показывает |
+|---|---|
+| `level : error` | все ошибки |
+| `duration_ms > 500` | медленные запросы |
+| `container_service : "worker" and queue : "payments.order_created"` | работа одного потребителя |
+| `event : "publish_unroutable"` | события, для которых нет подписчика |
+
+Логи в S3 удобны для архива и выборки по префиксу: `aws s3 ls s3://forsunki-logs/service=api/date=2026-11-10/`.
+
+Особенность разработки в Docker Desktop (WSL): настоящие файлы логов лежат в виртуальной машине Docker, а обычное монтирование
+`/var/lib/docker/containers` подменяется пустым каталогом. В `compose.dev.yml` Fluent Bit поэтому читает их через `/proc/1/root` (нужны
+`pid: host` и `SYS_PTRACE`, inotify заменён опросом). На Linux-сервере используется обычное монтирование только для чтения.
+Elasticsearch требует `vm.max_map_count=262144` (`sudo sysctl -w vm.max_map_count=262144` в WSL). В dev он и Kibana работают без
+аутентификации и доступны только на `127.0.0.1`.
 
 Остановка контейнера (`docker stop`) во время запроса: запрос завершается успешно, остановка занимает секунды.
 `/health/ready` отвечает `503`, если недоступна БД, при этом `/health/live` остаётся `200`.

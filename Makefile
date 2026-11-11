@@ -5,7 +5,7 @@ SERVICES := api web payment_stub
 SECRETS := postgres_password redis_password rabbitmq_password jwt_secret s3_access_key s3_secret_key payment_api_key payment_webhook_secret
 
 .DEFAULT_GOAL := help
-.PHONY: help env secrets up up-full down logs migrate test e2e lint fmt create-admin seed bench
+.PHONY: help env secrets up up-full down logs migrate test e2e check-compose lint fmt create-admin seed bench
 
 help: ## Список команд
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -49,6 +49,9 @@ test: ## Unit + интеграционные тесты всех сервисо�
 e2e: ## Сквозные сценарии на запущенном стеке: заказ и оплата через api, путь покупателя через сайт
 	cd services/api && uv run python ../../scripts/e2e_payment.py
 	cd services/api && uv run python ../../scripts/e2e_web.py
+
+check-compose: ## Проверить, что у всех сервисов настроена ротация Docker-логов
+	python3 scripts/check_compose.py
 
 lint: ## ruff + mypy
 	@for s in $(SERVICES); do \

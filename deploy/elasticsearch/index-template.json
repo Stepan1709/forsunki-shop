@@ -1,0 +1,38 @@
+{
+  "index_patterns": ["forsunki-logs-*"],
+  "priority": 200,
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "index.lifecycle.name": "forsunki-logs-retention"
+    },
+    "mappings": {
+      "dynamic_templates": [
+        {
+          "strings_as_keywords": {
+            "match_mapping_type": "string",
+            "mapping": { "type": "keyword", "ignore_above": 2048 }
+          }
+        }
+      ],
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "timestamp": { "type": "date" },
+        "message": { "type": "text" },
+        "event": { "type": "keyword" },
+        "level": { "type": "keyword" },
+        "service": { "type": "keyword" },
+        "container_service": { "type": "keyword" },
+        "env": { "type": "keyword" },
+        "correlation_id": { "type": "keyword" },
+        "order_id": { "type": "keyword" },
+        "user_id": { "type": "keyword" },
+        "method": { "type": "keyword" },
+        "path": { "type": "keyword" },
+        "status": { "type": "keyword" },
+        "duration_ms": { "type": "float" }
+      }
+    }
+  }
+}
