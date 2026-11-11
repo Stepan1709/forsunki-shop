@@ -3,7 +3,7 @@
 import asyncio
 import uuid
 from email.message import EmailMessage
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 import pytest
@@ -17,6 +17,7 @@ from app.core.messaging.errors import PermanentError, TemporaryError
 from app.core.outbox import OutboxMessage
 from app.modules.repair.models import RepairRequest
 from app.worker.notification_handlers import (
+    make_order_closed_mail_handler,
     make_order_mail_handler,
     make_repair_mail_handler,
     make_welcome_handler,
@@ -119,6 +120,42 @@ async def test_order_mail_contains_number_and_total(
     assert needle in body["Text"]
     assert "90 000,00 ₽" in body["Text"]  # 2 x 45 000
     assert "<html" in body["HTML"]  # есть и HTML-версия
+
+
+@pytest.mark.parametrize(
+    ("kind", "needle"),
+    [("payment_failed", "не прошла"), ("cancelled", "отменён")],
+)
+async def test_closed_order_mail_for_payment_failed_and_cancelled(
+    app: FastAPI,
+    client: httpx.AsyncClient,
+    catalog: dict[str, int],
+    harness: Harness,
+    publisher: Any,
+    infra_settings: Settings,
+    mailbox: Mailbox,
+    kind: Literal["payment_failed", "cancelled"],
+    needle: str,
+) -> None:
+    email = f"closed-{kind}@example.com"
+    user_id, headers = await create_user(app, email)
+    order = await make_order(app, client, headers, catalog["bosch_new"], 1)
+    spec = make_spec()
+    handler = make_order_closed_mail_handler(infra_settings, smtp(infra_settings), kind=kind)
+    async with harness.running(spec, handler):
+        await send(
+            publisher,
+            spec,
+            {
+                "order_id": order["id"],
+                "user_id": str(user_id),
+                "total_kopecks": order["total_kopecks"],
+            },
+        )
+        letters = await wait_for_mail(mailbox, email)
+    body = mailbox.full(letters[0]["ID"])
+    assert needle in body["Text"]
+    assert "<html" in body["HTML"]
 
 
 async def test_order_mail_for_deleted_user_is_skipped(

@@ -13,7 +13,7 @@ Consumer записывает message_id в таблицу и выполняет
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, String, func
+from sqlalchemy import DateTime, Index, String, func
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
@@ -29,6 +29,8 @@ class ProcessedMessage(Base):
     processed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+    __table_args__ = (Index("ix_processed_messages_processed_at", "processed_at"),)
 
 
 async def try_register(session: AsyncSession, message_id: uuid.UUID, consumer: str) -> bool:

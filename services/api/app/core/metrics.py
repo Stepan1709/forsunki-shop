@@ -33,6 +33,12 @@ CACHE_REQUESTS = Counter(
     ["result"],
 )
 
+RETENTION_DELETED = Counter(
+    "retention_deleted_rows_total",
+    "Строки, удалённые чисткой старых служебных данных",
+    ["table"],
+)
+
 CONSUMER_MESSAGES = Counter(
     "consumer_messages_total",
     "Сообщения, обработанные потребителями: processed, duplicate, retried, dead_lettered",

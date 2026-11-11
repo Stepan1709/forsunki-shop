@@ -7,6 +7,7 @@ from app.core.messaging.topology import DelayQueueSpec, QueueSpec
 from app.modules.orders.service import EXPIRE_DELAY_KEY
 from app.modules.payments.gateway import PaymentGateway
 from app.worker.notification_handlers import (
+    make_order_closed_mail_handler,
     make_order_mail_handler,
     make_repair_mail_handler,
     make_welcome_handler,
@@ -43,6 +44,16 @@ def build_subscriptions(
             "notifications.order_expired",
             "order.expired",
             make_order_mail_handler(settings, mailer, paid=False),
+        ),
+        notification(
+            "notifications.order_payment_failed",
+            "order.payment_failed",
+            make_order_closed_mail_handler(settings, mailer, kind="payment_failed"),
+        ),
+        notification(
+            "notifications.order_cancelled",
+            "order.cancelled",
+            make_order_closed_mail_handler(settings, mailer, kind="cancelled"),
         ),
         notification(
             "notifications.repair_master",

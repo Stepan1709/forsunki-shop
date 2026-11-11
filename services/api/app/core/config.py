@@ -98,6 +98,14 @@ class Settings(BaseSettings):
     expiry_sweep_interval_seconds: float = 60.0
     expiry_sweep_grace_seconds: float = 30.0
 
+    # Чистка служебных таблиц (сроки хранения в днях). inbox хранится дольше всего: он защищает от повторной
+    # обработки, пока сообщение ещё может прийти снова.
+    retention_interval_seconds: float = 3600.0
+    retention_batch_size: int = 1000
+    retention_outbox_days: float = 7.0
+    retention_inbox_days: float = 14.0
+    retention_idempotency_days: float = 7.0
+
     # Письма. В dev SMTP-сервер это Mailpit (принимает письма и показывает их в веб-интерфейсе, наружу не шлёт).
     smtp_host: str = "mailpit"
     smtp_port: int = 1025

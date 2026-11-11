@@ -10,6 +10,7 @@
 """
 
 import uuid
+from typing import Literal
 
 from app.core.config import Settings
 from app.core.mail import Mailer
@@ -43,6 +44,23 @@ def make_order_mail_handler(settings: Settings, mailer: Mailer, *, paid: bool) -
             await service.order_paid(*args)
         else:
             await service.order_expired(*args)
+
+    return handler
+
+
+def make_order_closed_mail_handler(
+    settings: Settings, mailer: Mailer, *, kind: Literal["payment_failed", "cancelled"]
+) -> Handler:
+    """Письмо о закрытии заказа не по оплате: отказ платежа или отмена. Раньше у этих событий не было
+    подписчика, и relay бесконечно откладывал их повторную отправку."""
+
+    async def handler(ctx: MessageContext) -> None:
+        service = NotificationService(ctx.session, settings, mailer)
+        args = (_uuid(ctx, "user_id"), _uuid(ctx, "order_id"), int(ctx.data["total_kopecks"]))
+        if kind == "payment_failed":
+            await service.order_payment_failed(*args)
+        else:
+            await service.order_cancelled(*args)
 
     return handler
 

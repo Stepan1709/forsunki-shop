@@ -19,6 +19,10 @@ async def boom() -> None:
     raise RuntimeError("secret internal detail")
 
 
+async def db_down() -> None:
+    raise ConnectionRefusedError("connect call failed ('10.0.0.5', 5432)")
+
+
 async def conflict() -> None:
     raise AppError("Товар закончился", status_code=409)
 
@@ -30,6 +34,7 @@ async def needs_int(x: int) -> dict[str, int]:
 def client_for(settings: Settings) -> httpx.AsyncClient:
     app = create_app(settings, lifespan=no_resources)
     app.add_api_route("/boom", boom)
+    app.add_api_route("/db-down", db_down)
     app.add_api_route("/conflict", conflict)
     app.add_api_route("/needs-int", needs_int)
     # raise_app_exceptions=False: тест видит ответ 500 так, как его увидел бы клиент.
@@ -74,3 +79,13 @@ async def test_unhandled_exception_is_hidden_from_client(settings: Settings) -> 
     assert "secret internal detail" not in response.text
     assert response.headers["content-type"] == "application/problem+json"
     assert CORRELATION_HEADER in response.headers
+
+
+async def test_unavailable_dependency_is_503_with_retry_after(settings: Settings) -> None:
+    async with client_for(settings) as client:
+        response = await client.get("/db-down")
+
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == "5"
+    assert "10.0.0.5" not in response.text  # адрес внутренней сети наружу не уходит
+    assert response.headers["content-type"] == "application/problem+json"

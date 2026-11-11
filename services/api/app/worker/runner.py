@@ -30,6 +30,7 @@ from app.core.messaging.topology import DelayQueueSpec, declare_delay_queue, dec
 from app.core.tracing import setup_tracing, shutdown_tracing
 from app.modules.payments.factory import build_gateway
 from app.worker.relay import OutboxRelay
+from app.worker.retention import RetentionCleaner
 from app.worker.stats import StatsCollector
 from app.worker.subscriptions import build_delay_queues, build_subscriptions
 from app.worker.sweeper import ExpirySweeper
@@ -49,11 +50,13 @@ class Worker:
         delay_queues: list[DelayQueueSpec] | None = None,
         *,
         run_sweeper: bool = False,
+        run_retention: bool = False,
     ) -> None:
         self._settings = settings
         self._subscriptions = subscriptions
         self._delay_queues = delay_queues
         self._run_sweeper = run_sweeper
+        self._run_retention = run_retention
         self._stack: AsyncExitStack | None = None
         self._connection: AbstractRobustConnection | None = None
         self._consumers: list[Consumer] = []
@@ -126,6 +129,11 @@ class Worker:
                 self._tasks.append(
                     asyncio.create_task(sweeper.run(self._stop_background), name="sweeper")
                 )
+            if self._run_retention:
+                cleaner = RetentionCleaner(session_factory, s)
+                self._tasks.append(
+                    asyncio.create_task(cleaner.run(self._stop_background), name="retention")
+                )
             if s.worker_metrics_port is not None:
                 # Воркер не веб-сервис, поэтому метрики отдаёт отдельный маленький HTTP-сервер в своём потоке.
                 server, _thread = start_http_server(s.worker_metrics_port)
@@ -168,7 +176,7 @@ class Worker:
 
 
 async def _amain(settings: Settings) -> None:
-    worker = Worker(settings, run_sweeper=True)
+    worker = Worker(settings, run_sweeper=True, run_retention=True)
     await worker.start()
 
     stop_event = asyncio.Event()

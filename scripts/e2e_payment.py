@@ -144,6 +144,11 @@ def main() -> None:
     if stock() != before:
         fail("товар не вернулся на склад")
     step("остаток вернулся на склад")
+    wait_for(
+        "письмо об отказе платежа в Mailpit",
+        lambda: [m for m in mails_to(email) if "оплата не прошла" in m["Subject"]],
+    )
+    step("покупателю пришло письмо о том, что оплата не прошла")
 
     print("Все проверки пройдены")
 

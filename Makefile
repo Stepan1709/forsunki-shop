@@ -5,7 +5,7 @@ SERVICES := api web payment_stub
 SECRETS := postgres_password redis_password rabbitmq_password jwt_secret s3_access_key s3_secret_key payment_api_key payment_webhook_secret grafana_admin_password
 
 .DEFAULT_GOAL := help
-.PHONY: help env secrets up up-full down logs migrate test e2e check-compose lint fmt create-admin seed bench
+.PHONY: help env secrets up up-full down logs migrate test e2e check-compose lint fmt create-admin seed bench chaos load
 
 help: ## Список команд
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -72,3 +72,9 @@ seed: env secrets ## Заполнить каталог демо-данными: 
 
 bench: ## Замер каталога до/после кэша (api должен быть запущен и каталог заполнен)
 	cd services/api && uv run python ../../scripts/bench_catalog.py
+
+chaos: ## Хаос-сценарии: убить воркер, остановить RabbitMQ, Redis, Postgres (стек должен быть запущен; make up)
+	cd services/api && uv run python ../../scripts/chaos.py
+
+load: ## Нагрузочные замеры Locust (каталог с кэшем и без, заказы при 1/2/4 воркерах); ~8 минут, стек должен быть запущен
+	cd services/api && uv run python ../../scripts/load_matrix.py
