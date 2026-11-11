@@ -2,7 +2,7 @@
 # Образ payment_stub. Контекст сборки: корень репозитория.
 #   docker build -f services/payment_stub/Dockerfile -t forsunki-payment-stub .
 
-ARG PYTHON_VERSION=3.12.8
+ARG PYTHON_VERSION=3.12.16
 
 FROM python:${PYTHON_VERSION}-slim-bookworm AS builder
 COPY --from=ghcr.io/astral-sh/uv:0.5.14 /uv /usr/local/bin/uv

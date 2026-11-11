@@ -2,7 +2,7 @@
 # Образ сайта. Контекст сборки: корень репозитория.
 #   docker build -f services/web/Dockerfile -t forsunki-web .
 
-ARG PYTHON_VERSION=3.12.8
+ARG PYTHON_VERSION=3.12.16
 
 # --- Стадия css: Tailwind standalone CLI (без Node) собирает один минифицированный файл стилей ---
 FROM debian:bookworm-slim AS css

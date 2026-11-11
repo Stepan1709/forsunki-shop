@@ -5,7 +5,7 @@ SERVICES := api web payment_stub
 SECRETS := postgres_password redis_password rabbitmq_password jwt_secret s3_access_key s3_secret_key payment_api_key payment_webhook_secret grafana_admin_password
 
 .DEFAULT_GOAL := help
-.PHONY: help env secrets up up-full down logs migrate test e2e check-compose lint fmt create-admin seed bench chaos load tls prod-secrets prod-build prod-local prod-down prod-seed prod-e2e backup backup-verify
+.PHONY: help env secrets up up-full down logs migrate test e2e check-compose lint fmt create-admin seed bench chaos load tls prod-secrets prod-build prod-up prod-local prod-down prod-seed prod-e2e backup backup-verify
 
 help: ## Список команд
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -109,8 +109,10 @@ prod-build: ## Собрать образы под именами GHCR с тег�
 	docker build -f services/web/Dockerfile -t ghcr.io/$(GHCR_OWNER)/forsunki-web:$(PROD_TAG) .
 	docker build -f services/payment_stub/Dockerfile -t ghcr.io/$(GHCR_OWNER)/forsunki-payment-stub:$(PROD_TAG) .
 
-prod-local: env prod-secrets tls prod-build ## Поднять prod на этой машине: https://localhost (остановите dev-стек: make down)
+prod-up: ## Поднять prod из уже собранных или скачанных образов (без сборки)
 	$(PROD) --profile mailsink up -d --wait
+
+prod-local: env prod-secrets tls prod-build prod-up ## Собрать образы и поднять prod на этой машине: https://localhost (dev-стек можно не останавливать)
 
 prod-seed: ## Заполнить каталог prod-стека демо-данными: make prod-seed COUNT=500
 	$(PROD) run --rm migrate python -m app.cli seed --count $(or $(COUNT),500) --reset

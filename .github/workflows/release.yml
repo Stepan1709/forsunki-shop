@@ -1,0 +1,179 @@
+name: Release
+
+# Публикация образов в GHCR и выкатка на сервер.
+#   * слияние в main (после успешного CI): образы с тегом sha-<7 символов коммита> и latest, выкатка этого тега;
+#   * тег v*: образы с этим тегом и выкатка;
+#   * ручной запуск: выкатить указанный тег или откатиться на предыдущий (`deploy.sh rollback`).
+# Выкатка включается, когда в репозитории заданы секреты DEPLOY_HOST, DEPLOY_USER, DEPLOY_PATH, DEPLOY_SSH_KEY и
+# DEPLOY_KNOWN_HOSTS (окружение production). Без них публикуются только образы.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Что сделать на сервере"
+        type: choice
+        options: [deploy, rollback]
+        default: deploy
+      tag:
+        description: "Тег образов для deploy (например v0.1.0 или sha-abc1234)"
+        required: false
+
+concurrency:
+  group: release
+  cancel-in-progress: false   # выкатку не прерываем посреди дела
+
+permissions:
+  contents: read
+
+jobs:
+  meta:
+    name: определить тег
+    runs-on: ubuntu-24.04
+    # По слиянию в main работаем, только если CI на этом коммите прошёл.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      sha: ${{ steps.tag.outputs.sha }}
+      latest: ${{ steps.tag.outputs.latest }}
+      owner: ${{ steps.tag.outputs.owner }}
+    steps:
+      - id: tag
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          echo "sha=${RUN_SHA}" >> "$GITHUB_OUTPUT"
+          echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+          case "$EVENT" in
+            push) tag="$REF_NAME"; latest=false ;;
+            workflow_dispatch) tag="${INPUT_TAG}"; latest=false ;;
+            *) tag="sha-${RUN_SHA:0:7}"; latest=true ;;
+          esac
+          if [ "$EVENT" = "workflow_dispatch" ] && [ "${{ inputs.action }}" = "deploy" ] && [ -z "$tag" ]; then
+            echo "Для deploy укажите тег образов" >&2
+            exit 1
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "latest=${latest}" >> "$GITHUB_OUTPUT"
+
+  images:
+    name: публикация образа ${{ matrix.image }}
+    runs-on: ubuntu-24.04
+    needs: meta
+    # Ручной запуск только пересобирать ничего не должен: образы тега уже опубликованы.
+    if: github.event_name != 'workflow_dispatch'
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {image: api, dockerfile: services/api/Dockerfile}
+          - {image: web, dockerfile: services/web/Dockerfile}
+          - {image: payment-stub, dockerfile: services/payment_stub/Dockerfile}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.meta.outputs.sha }}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Теги образа
+        id: tags
+        env:
+          BASE: ghcr.io/${{ needs.meta.outputs.owner }}/forsunki-${{ matrix.image }}
+          TAG: ${{ needs.meta.outputs.tag }}
+          LATEST: ${{ needs.meta.outputs.latest }}
+        run: |
+          {
+            echo "list<<EOF"
+            echo "${BASE}:${TAG}"
+            [ "$LATEST" = "true" ] && echo "${BASE}:latest"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.tags.outputs.list }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.meta.outputs.sha }}
+
+  deploy:
+    name: выкатка на сервер
+    runs-on: ubuntu-24.04
+    needs: [meta, images]
+    # images пропускается при ручном запуске: ждём его, только если он был.
+    if: ${{ !cancelled() && needs.meta.result == 'success' && (needs.images.result == 'success' || needs.images.result == 'skipped') }}
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.meta.outputs.sha }}
+      - name: Проверить, настроена ли выкатка
+        id: gate
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          if [ -z "$HOST" ] || [ -z "$KEY" ]; then
+            echo "Секреты выкатки не заданы: публикуются только образы."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Подготовить SSH
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # Отпечаток сервера задан заранее (DEPLOY_KNOWN_HOSTS): без него ssh согласился бы на любой сервер.
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Синхронизировать конфигурацию (compose, nginx, скрипты) с выкатываемым коммитом
+        if: steps.gate.outputs.enabled == 'true' && (github.event_name != 'workflow_dispatch' || inputs.action == 'deploy')
+        env:
+          TARGET: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${{ secrets.DEPLOY_PATH }}/deploy/
+        run: |
+          # secrets, tls и файл состояния живут на сервере и не затираются.
+          rsync -az --delete \
+            --exclude secrets --exclude tls --exclude .deploy-state \
+            -e "ssh -i ~/.ssh/deploy_key" deploy/ "$TARGET"
+      - name: Выкатить тег
+        if: steps.gate.outputs.enabled == 'true' && (github.event_name != 'workflow_dispatch' || inputs.action == 'deploy')
+        env:
+          SERVER: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
+          SERVER_PATH: ${{ secrets.DEPLOY_PATH }}
+          TAG: ${{ needs.meta.outputs.tag }}
+          OWNER: ${{ needs.meta.outputs.owner }}
+        run: |
+          ssh -i ~/.ssh/deploy_key "$SERVER" \
+            "cd '$SERVER_PATH/deploy' && GHCR_OWNER='$OWNER' SECRETS_DIR='$SERVER_PATH/deploy/secrets' ./deploy.sh up '$TAG'"
+      - name: Откат на предыдущий тег
+        if: steps.gate.outputs.enabled == 'true' && github.event_name == 'workflow_dispatch' && inputs.action == 'rollback'
+        env:
+          SERVER: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
+          SERVER_PATH: ${{ secrets.DEPLOY_PATH }}
+          OWNER: ${{ needs.meta.outputs.owner }}
+        run: |
+          ssh -i ~/.ssh/deploy_key "$SERVER" \
+            "cd '$SERVER_PATH/deploy' && GHCR_OWNER='$OWNER' SECRETS_DIR='$SERVER_PATH/deploy/secrets' ./deploy.sh rollback"
