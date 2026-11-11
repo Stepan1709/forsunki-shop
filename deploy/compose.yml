@@ -348,7 +348,7 @@ services:
   # Сборщик логов. Читает файлы Docker только для чтения; запускается от root, потому что файлы логов принадлежат root.
   # Ключи S3 лежат в файлах секретов, а Fluent Bit читает их из переменных окружения: экспортируем перед запуском.
   fluent-bit:
-    image: fluent/fluent-bit:3.2.2-debug
+    image: fluent/fluent-bit:5.1.5-debug
     profiles: [logging]
     restart: unless-stopped
     user: "0:0"
