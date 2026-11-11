@@ -37,3 +37,4 @@ learning/
 # Рабочая документация и заметки, в репозиторий не попадают
 docs/
 loadtest/results/
+deploy/.deploy-state

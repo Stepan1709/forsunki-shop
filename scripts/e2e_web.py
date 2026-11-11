@@ -4,6 +4,7 @@
 статус «Оплачен» -> заказ в истории профиля. Проверяется и то, что в cookie только id сессии.
 """
 
+import os
 import re
 import sys
 import time
@@ -11,7 +12,9 @@ import uuid
 
 import httpx
 
-WEB = "http://localhost:8000"
+# Адрес сайта: по умолчанию dev (make e2e); для prod на этой машине WEB_URL=https://localhost E2E_VERIFY_TLS=0 (make prod-e2e).
+WEB = os.environ.get("WEB_URL", "http://localhost:8000")
+VERIFY = os.environ.get("E2E_VERIFY_TLS", "1") != "0"  # самоподписанный сертификат локального prod
 PASSWORD = "e2e-pass-12345"  # noqa: S105  (тестовый пароль одноразового пользователя)
 HTMX = {"HX-Request": "true"}
 
@@ -34,7 +37,7 @@ def csrf(html: str) -> str:
 
 
 def main() -> None:
-    client = httpx.Client(base_url=WEB, timeout=15)
+    client = httpx.Client(base_url=WEB, timeout=15, verify=VERIFY)
 
     home = client.get("/")
     if home.status_code != 200 or "Перейти в магазин" not in home.text:
@@ -54,6 +57,17 @@ def main() -> None:
     if "." in cookie or "eyJ" in cookie:
         fail("в cookie похоже на токен, а не на случайный id")
     step("регистрация и вход, в cookie только id сессии")
+    if WEB.startswith("https"):
+        set_cookie = response.headers.get("set-cookie", "")
+        if "Secure" not in set_cookie or "HttpOnly" not in set_cookie:
+            fail(f"cookie сессии без Secure/HttpOnly: {set_cookie}")
+        step("cookie сессии помечена Secure и HttpOnly")
+        for path in ("/metrics", "/health/ready"):
+            if client.get(path).status_code != 404:
+                fail(f"{path} доступен снаружи")
+        if "max-age" not in home.headers.get("strict-transport-security", ""):
+            fail("нет заголовка HSTS")
+        step("служебные пути закрыты, заголовки безопасности на месте")
 
     # Магазин и карточка.
     shop = client.get("/shop", params={"condition": "new"})
@@ -112,7 +126,7 @@ def main() -> None:
         fail("не дождались ссылки на оплату")
     step("воркер создал платёж, на странице заказа появилась кнопка оплаты")
 
-    httpx.post(f"{pay_url}/confirm", follow_redirects=True, timeout=15)
+    httpx.post(f"{pay_url}/confirm", follow_redirects=True, timeout=15, verify=VERIFY)
     paid = False
     deadline = time.monotonic() + 40
     while time.monotonic() < deadline:

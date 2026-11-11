@@ -1,0 +1,163 @@
+# Prod: накладывается на compose.yml (без compose.dev.yml):  docker compose -f compose.yml -f compose.prod.yml ...
+#
+# Чем отличается от dev:
+#   * образы берутся по тегу из реестра (GHCR), а не собираются на месте: на сервере выкатывается ровно то, что прошло CI;
+#   * наружу публикуется только nginx (80, 443, 8444 для Kibana); ни одного порта БД, брокера или приложений;
+#   * секреты читаются из каталога на сервере (SECRETS_DIR), права 600, вне репозитория;
+#   * приложения работают с read-only файловой системой, без лишних привилегий Linux (cap_drop ALL, no-new-privileges);
+#   * api запущен в двух экземплярах (нагрузочные замеры показали, что один процесс это узкое место);
+#   * ENV=prod: документация API и служебные эндпоинты /debug выключены, cookie помечаются Secure.
+#
+# Переменные: TAG (обязательна: версия образов), GHCR_OWNER, SITE_URL (публичный адрес, по умолчанию https://localhost),
+# SECRETS_DIR (каталог секретов), HTTP_PORT / HTTPS_PORT / KIBANA_PORT (порты nginx на хосте).
+
+x-hardened: &hardened
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+
+x-prod-env: &prod-env
+  ENV: prod
+  # Публичный адрес сайта: на него ведут ссылки в письмах, возврат с оплаты и подписанные ссылки на картинки.
+  SHOP_BASE_URL: ${SITE_URL:-https://localhost}
+  PAYMENT_RETURN_URL: ${SITE_URL:-https://localhost}/orders/{order_id}
+  S3_PUBLIC_ENDPOINT_URL: ${SITE_URL:-https://localhost}
+  # Бакет в настоящем S3 создаёт администратор; для локального RustFS значение по умолчанию true.
+  S3_CREATE_BUCKET: ${S3_CREATE_BUCKET:-true}
+
+services:
+  migrate:
+    <<: *hardened
+    image: ghcr.io/${GHCR_OWNER:-stepan1709}/forsunki-api:${TAG:?укажите TAG, например v0.1.0}
+    build: !reset null
+    environment:
+      <<: *prod-env
+
+  api:
+    <<: *hardened
+    image: ghcr.io/${GHCR_OWNER:-stepan1709}/forsunki-api:${TAG:?укажите TAG}
+    build: !reset null
+    environment:
+      <<: *prod-env
+    deploy:
+      replicas: 2
+      resources:
+        limits: {cpus: "1.0", memory: 512M}
+
+  worker:
+    <<: *hardened
+    image: ghcr.io/${GHCR_OWNER:-stepan1709}/forsunki-api:${TAG:?укажите TAG}
+    build: !reset null
+    environment:
+      <<: *prod-env
+      SERVICE_NAME: worker
+      WORKER_METRICS_PORT: "9100"
+
+  web:
+    <<: *hardened
+    image: ghcr.io/${GHCR_OWNER:-stepan1709}/forsunki-web:${TAG:?укажите TAG}
+    build: !reset null
+    environment:
+      ENV: prod
+      COOKIE_SECURE: "true"
+
+  payment_stub:
+    <<: *hardened
+    image: ghcr.io/${GHCR_OWNER:-stepan1709}/forsunki-payment-stub:${TAG:?укажите TAG}
+    build: !reset null
+    environment:
+      ENV: prod
+      PUBLIC_BASE_URL: ${SITE_URL:-https://localhost}
+
+  # Хранилище объектов для проверки prod на одной машине (RustFS). С настоящим S3 (облако) этот сервис не нужен:
+  # достаточно задать S3_ENDPOINT_URL и ключи доступа у api и воркера.
+  s3:
+    image: rustfs/rustfs:1.0.4
+    restart: unless-stopped
+    init: true
+    entrypoint:
+      - sh
+      - -c
+      - |
+        export RUSTFS_ACCESS_KEY="$$(cat /run/secrets/s3_access_key)"
+        export RUSTFS_SECRET_KEY="$$(cat /run/secrets/s3_secret_key)"
+        exec /entrypoint.sh rustfs
+    environment:
+      RUSTFS_ADDRESS: ":9000"
+    secrets: [s3_access_key, s3_secret_key]
+    volumes:
+      - s3_data:/data
+    networks: [data]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    deploy:
+      resources:
+        limits: {cpus: "1.0", memory: 512M}
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3", labels: "com.docker.compose.service"}
+
+  # Приёмник писем для проверки prod на одной машине (профиль mailsink): письма не уходят наружу, их видно на 127.0.0.1:8025.
+  # На сервере вместо него задаётся настоящий SMTP (SMTP_HOST, SMTP_PORT у api и воркера).
+  mailpit:
+    profiles: [mailsink]
+    image: axllent/mailpit:v1.21.8
+    restart: unless-stopped
+    networks: [backend]
+    ports: ["127.0.0.1:${MAILPIT_PORT:-8026}:8025"]
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits: {cpus: "0.25", memory: 128M}
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3", labels: "com.docker.compose.service"}
+
+  # Единственная точка входа. Сертификаты лежат в каталоге deploy/tls (make tls создаёт самоподписанный для localhost).
+  nginx:
+    image: nginxinc/nginx-unprivileged:1.27.3-alpine
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs: ["/tmp", "/var/cache/nginx:mode=1777"]   # временные файлы запросов; остальная файловая система только для чтения
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    ports:
+      - "${HTTP_PORT:-80}:8080"
+      - "${HTTPS_PORT:-443}:8443"
+      - "${KIBANA_PORT:-8444}:8444"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ${TLS_DIR:-./tls}:/etc/nginx/tls:ro
+    secrets: [kibana_htpasswd]
+    depends_on:
+      web: {condition: service_healthy}
+      s3: {condition: service_healthy}
+    networks: [edge, backend, data]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/nginx-health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits: {cpus: "0.5", memory: 128M}
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3", labels: "com.docker.compose.service"}
+
+volumes:
+  s3_data: {}
+
+secrets:
+  kibana_htpasswd:
+    file: ${SECRETS_DIR:-./secrets/prod}/kibana_htpasswd

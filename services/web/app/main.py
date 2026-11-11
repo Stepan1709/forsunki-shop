@@ -10,6 +10,7 @@ from fastapi import Depends, FastAPI
 from fastapi.staticfiles import StaticFiles
 from redis.asyncio import Redis
 
+from app.clientip import ClientIpMiddleware
 from app.config import Settings
 from app.deps import csrf_protect
 from app.errors import install_error_handlers
@@ -62,6 +63,7 @@ def create_app(
     app.add_middleware(SessionMiddleware, store=store, settings=settings)
     app.add_middleware(MetricsMiddleware)
     app.add_middleware(CorrelationIdMiddleware)
+    app.add_middleware(ClientIpMiddleware, trusted_proxies=settings.trusted_proxies)
 
     app.mount("/static", StaticFiles(directory=STATIC, check_dir=False), name="static")
     app.include_router(pages.health_router)

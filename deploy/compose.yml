@@ -315,6 +315,36 @@ services:
     networks: [data]
     logging: *default-logging
 
+  # ------------------------------------------------------------------------------------------ резервные копии
+  # Профиль backup. pg_dump по расписанию в S3 (бакет forsunki-backups), хранение BACKUP_KEEP_DAYS дней.
+  # Разовая копия: make backup; проверка восстановления: make backup-verify.
+  backup:
+    profiles: [backup]
+    build:
+      context: ./backup
+    image: forsunki-backup:dev
+    restart: unless-stopped
+    init: true
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-forsunki}
+      PGDATABASE: ${POSTGRES_DB:-forsunki}
+      S3_ENDPOINT_URL: ${BACKUP_S3_ENDPOINT_URL:-http://s3:9000}
+      BACKUP_BUCKET: ${BACKUP_BUCKET:-forsunki-backups}
+      BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+    secrets: [postgres_password, s3_access_key, s3_secret_key]
+    depends_on:
+      postgres: {condition: service_healthy}
+      s3: {condition: service_healthy}
+    networks: [data]
+    read_only: true
+    tmpfs: [/tmp]
+    deploy:
+      resources:
+        limits: {cpus: "0.5", memory: 256M}
+    logging: *default-logging
+
   # Сборщик логов. Читает файлы Docker только для чтения; запускается от root, потому что файлы логов принадлежат root.
   # Ключи S3 лежат в файлах секретов, а Fluent Bit читает их из переменных окружения: экспортируем перед запуском.
   fluent-bit:
