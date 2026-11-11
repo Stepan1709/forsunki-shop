@@ -7,6 +7,8 @@ from app.core.correlation import CorrelationIdMiddleware
 from app.core.errors import install_error_handlers
 from app.core.lifespan import resources_lifespan
 from app.core.logging import configure_logging
+from app.core.metrics import MetricsMiddleware, metrics_endpoint
+from app.core.tracing import instrument_app, setup_tracing
 from app.modules.cart.router import router as cart_router
 from app.modules.catalog.admin_router import router as catalog_admin_router
 from app.modules.catalog.router import router as catalog_router
@@ -22,6 +24,7 @@ def create_app(
     """Фабрика приложения. Настройки и lifespan можно подменить в тестах."""
     settings = settings or Settings()  # type: ignore[call-arg]  # пароли читаются из секретов
     configure_logging(settings)
+    setup_tracing(settings)
 
     app = FastAPI(
         title="ForsunkiShop API",
@@ -30,10 +33,14 @@ def create_app(
     )
     app.state.settings = settings
 
+    # Порядок: добавленный последним выполняется первым, поэтому correlation_id уже есть, когда middleware метрик пишет логи.
+    app.add_middleware(MetricsMiddleware)
     app.add_middleware(CorrelationIdMiddleware)
     install_error_handlers(app)
 
     app.include_router(health.router)
+    # Метрики забирает Prometheus внутри сети; наружу (nginx) этот путь не публикуется.
+    app.add_route("/metrics", metrics_endpoint, include_in_schema=False)
     app.include_router(auth_router)
     app.include_router(users_router)
     app.include_router(catalog_router)
@@ -44,4 +51,5 @@ def create_app(
     app.include_router(repair_router)
     if settings.env != "prod":
         app.include_router(debug.router)
+    instrument_app(app)  # после всех роутеров и middleware: трасса охватывает весь запрос
     return app

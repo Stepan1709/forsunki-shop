@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     # Общий секрет подписи webhook: по нему api убеждается, что событие прислал именно провайдер.
     payment_webhook_secret: SecretStr
 
+    # Трассировка (OpenTelemetry): адрес приёма OTLP по HTTP. Пусто: выключена.
+    otel_endpoint: str | None = None
+
     webhook_max_attempts: int = 8
     webhook_retry_base_seconds: float = 1.0  # пауза между попытками растёт: 1, 2, 4, 8 ...
     redeliver_interval_seconds: float = 10.0  # как часто искать недоставленные события

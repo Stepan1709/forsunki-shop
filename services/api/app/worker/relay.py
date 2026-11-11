@@ -15,12 +15,14 @@ import contextlib
 from datetime import UTC, datetime, timedelta
 
 import structlog
+from opentelemetry.trace import SpanKind
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.messaging.errors import PublishFailed, Unroutable
 from app.core.messaging.publisher import Publisher
 from app.core.outbox import OutboxMessage
+from app.core.tracing import inject_headers, span
 
 log = structlog.get_logger("relay")
 
@@ -58,12 +60,24 @@ class OutboxRelay:
             sent = 0
             for row in rows:
                 try:
-                    await self._publisher.publish_event(
-                        row.routing_key,
-                        row.payload,
-                        message_id=row.id,
-                        correlation_id=row.correlation_id,
-                    )
+                    # Спан публикации продолжает трассу запроса, создавшего событие (traceparent из строки outbox), а его
+                    # собственный контекст уходит в заголовок сообщения: consumer станет потомком этого спана.
+                    with span(
+                        f"publish {row.routing_key}",
+                        kind=SpanKind.PRODUCER,
+                        parent_traceparent=row.traceparent,
+                        attributes={
+                            "messaging.system": "rabbitmq",
+                            "messaging.destination.name": row.routing_key,
+                        },
+                    ):
+                        await self._publisher.publish_event(
+                            row.routing_key,
+                            row.payload,
+                            message_id=row.id,
+                            correlation_id=row.correlation_id,
+                            headers=inject_headers({}),
+                        )
                 except Unroutable as exc:
                     # У события нет получателя. Это проблема конкретного сообщения, а не брокера: откладываем его
                     # с растущей паузой и идём дальше, чтобы оно не блокировало остальные события.

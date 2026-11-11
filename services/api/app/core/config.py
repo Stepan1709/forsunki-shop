@@ -74,6 +74,10 @@ class Settings(BaseSettings):
     relay_batch_size: int = 50  # сколько событий outbox отправляется за одну итерацию
     relay_poll_interval_seconds: float = 0.5  # пауза, когда новых событий нет
     worker_shutdown_timeout_seconds: float = 25.0  # < stop_grace_period контейнера (30 с)
+    # Метрики воркера: порт HTTP-сервера для Prometheus (None: выключено, например в тестах) и период обновления
+    # значений, которые берутся из БД (заказы по статусам, состояние outbox).
+    worker_metrics_port: int | None = None
+    metrics_refresh_seconds: float = 15.0
     worker_heartbeat_path: str | None = "/tmp/worker-alive"  # noqa: S108  (файл-«пульс» для healthcheck)
 
     # Заказы: сколько минут даётся на оплату, затем резерв снимается (истечение заказа).
@@ -107,6 +111,9 @@ class Settings(BaseSettings):
     # Заявки на ремонт: не больше N с одного IP за окно (защита от спама).
     repair_ip_limit: int = 5
     repair_window_seconds: int = 3600
+
+    # Трассировка (OpenTelemetry): адрес приёма OTLP по HTTP, например http://jaeger:4318. Пусто: трассировка выключена.
+    otel_endpoint: str | None = None
 
     # Rate limiting (Redis). Окна в секундах.
     register_ip_limit: int = 5

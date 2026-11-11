@@ -19,6 +19,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.correlation import current_correlation_id
 from app.core.db import Base
+from app.core.tracing import current_traceparent
 
 
 class OutboxMessage(Base):
@@ -37,6 +38,8 @@ class OutboxMessage(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     last_error: Mapped[str | None] = mapped_column(Text, default=None)
+    # Контекст трассы запроса, породившего событие (заголовок W3C traceparent): relay продолжит ту же трассу.
+    traceparent: Mapped[str | None] = mapped_column(String(64), default=None)
 
     __table_args__ = (
         # Частичный индекс: relay ищет только неотправленные, а их всегда мало. Индекс по всей таблице рос бы вместе
@@ -62,5 +65,6 @@ class OutboxEventSink:
                 payload=payload,
                 # id запроса сохраняем, чтобы по нему связать HTTP-запрос и обработку события воркером.
                 correlation_id=current_correlation_id(),
+                traceparent=current_traceparent(),
             )
         )

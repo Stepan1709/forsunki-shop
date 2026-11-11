@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     api_url: str = "http://api:8000"
     api_timeout_seconds: float = 10.0
 
+    # Трассировка (OpenTelemetry): адрес приёма OTLP по HTTP, например http://jaeger:4318. Пусто: выключена.
+    otel_endpoint: str | None = None
+
     redis_host: str = "redis"
     redis_port: int = 6379
     redis_password: SecretStr

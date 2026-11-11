@@ -18,6 +18,7 @@ import aio_pika
 import httpx
 import structlog
 from aio_pika.abc import AbstractRobustConnection
+from prometheus_client import start_http_server
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.config import Settings
@@ -26,8 +27,10 @@ from app.core.mail import SmtpMailer
 from app.core.messaging.consumer import Consumer, Subscription
 from app.core.messaging.publisher import Publisher
 from app.core.messaging.topology import DelayQueueSpec, declare_delay_queue, declare_exchanges
+from app.core.tracing import setup_tracing, shutdown_tracing
 from app.modules.payments.factory import build_gateway
 from app.worker.relay import OutboxRelay
+from app.worker.stats import StatsCollector
 from app.worker.subscriptions import build_delay_queues, build_subscriptions
 from app.worker.sweeper import ExpirySweeper
 
@@ -60,6 +63,10 @@ class Worker:
     async def start(self) -> None:
         s = self._settings
         async with AsyncExitStack() as stack:
+            setup_tracing(s)
+            stack.callback(
+                shutdown_tracing
+            )  # первым в стеке, значит закроется последним: спаны успевают уйти
             engine = create_async_engine(s.database_url, pool_size=s.db_pool_size)
             stack.push_async_callback(engine.dispose)
             session_factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -118,6 +125,14 @@ class Worker:
                 sweeper = ExpirySweeper(session_factory, s)
                 self._tasks.append(
                     asyncio.create_task(sweeper.run(self._stop_background), name="sweeper")
+                )
+            if s.worker_metrics_port is not None:
+                # Воркер не веб-сервис, поэтому метрики отдаёт отдельный маленький HTTP-сервер в своём потоке.
+                server, _thread = start_http_server(s.worker_metrics_port)
+                stack.callback(server.shutdown)
+                stats = StatsCollector(session_factory, s.metrics_refresh_seconds)
+                self._tasks.append(
+                    asyncio.create_task(stats.run(self._stop_background), name="stats")
                 )
             if s.worker_heartbeat_path:
                 self._tasks.append(

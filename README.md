@@ -50,7 +50,8 @@ flowchart LR
 | `payment_stub` | заглушка платёжного провайдера (страница оплаты, подписанные webhook'и) | работает |
 | `web` | сайт: Jinja2 + HTMX + Alpine.js + Tailwind, сессии в Redis (BFF) | работает |
 | Fluent Bit, Elasticsearch, Kibana, S3 | сбор, поиск и архив логов (профиль `logging`) | работают |
-| nginx, Prometheus + Grafana | вход, метрики | в разработке |
+| Prometheus, Grafana, Jaeger (OpenTelemetry) | метрики, дашборд, алерты, трассировка (профили `monitoring` и `tracing`) | работают |
+| nginx | единая точка входа с TLS | в разработке |
 
 ## Быстрый старт
 
@@ -59,7 +60,7 @@ flowchart LR
 ```bash
 make secrets   # случайные пароли в deploy/secrets/dev (не коммитятся)
 make up        # postgres, redis, rabbitmq, api, worker, web, S3-хранилище + Adminer, Mailpit
-make up-full   # то же + Fluent Bit, Elasticsearch, Kibana (нужно около 2,5 ГБ памяти)
+make up-full   # то же + логи, метрики и трассировка: Elasticsearch, Kibana, Prometheus, Grafana, Jaeger (около 4 ГБ памяти)
 make check-compose # проверить ротацию логов у всех сервисов
 make e2e       # сквозные сценарии: заказ и оплата, путь покупателя через сайт
 make seed      # заполнить каталог демо-данными (make seed COUNT=20000)
@@ -70,6 +71,9 @@ make down
 |---|---|
 | Сайт | http://localhost:8000 |
 | Kibana (после `make up-full`) | http://localhost:5601 (дашборд «Forsunki: обзор логов» открывается по умолчанию) |
+| Grafana | http://localhost:3000 (пользователь `admin`, пароль в `deploy/secrets/dev/grafana_admin_password`; дашборд «Forsunki: обзор системы») |
+| Prometheus | http://localhost:9090 (раздел Alerts: правила алертов) |
+| Jaeger | http://localhost:16686 (сервис `web`, операция `POST /checkout`) |
 | API (Swagger) | http://localhost:8001/docs |
 | Админка каталога | http://localhost:8001/admin (вход под пользователем с ролью admin) |
 | Страница оплаты (заглушка) | http://localhost:8002 (ссылка на оплату приходит из `GET /orders/{id}/payment`) |
@@ -246,6 +250,56 @@ correlation_id : "c37330fa1c6746c5a3c1d8204a2a6f4f"
 `pid: host` и `SYS_PTRACE`, inotify заменён опросом). На Linux-сервере используется обычное монтирование только для чтения.
 Elasticsearch требует `vm.max_map_count=262144` (`sudo sysctl -w vm.max_map_count=262144` в WSL). В dev он и Kibana работают без
 аутентификации и доступны только на `127.0.0.1`.
+
+**Метрики и алерты.** `api`, `web` и воркер отдают `/metrics` (воркер на отдельном порту 9100), RabbitMQ метрики по каждой очереди через плагин
+`rabbitmq_prometheus`. Prometheus опрашивает их каждые 10 секунд, Grafana показывает готовый дашборд из репозитория.
+Эндпоинты `/metrics` доступны только внутри сети Docker, наружу (через nginx) не публикуются.
+
+| Метрика | Что показывает |
+|---|---|
+| `http_requests_total`, `http_request_duration_seconds` | запросы в секунду, ошибки 5xx, задержка p50/p95/p99 по маршрутам `api` и `web` |
+| `consumer_messages_total`, `consumer_message_duration_seconds` | обработанные, повторные, дублирующиеся и недоставленные (DLQ) сообщения и время обработки по очередям |
+| `rabbitmq_detailed_queue_messages_ready` | длина каждой очереди, отдельно очереди повторов и `*.dlq` |
+| `orders_by_status` | заказы по статусам (воркер читает БД раз в 15 секунд) |
+| `cache_requests_total` | попадания, промахи и обходы кэша каталога (hit ratio) |
+| `outbox_pending_events`, `outbox_oldest_overdue_seconds`, `outbox_unroutable_events` | события в outbox, просрочка отправки и события без подписчика |
+
+В метках только шаблон маршрута (`/orders/{order_id}`), а не реальный адрес: иначе каждый заказ создавал бы новый временной ряд, а сканеры
+и опечатки в адресе попадают в одну метку `unmatched`.
+
+| Алерт | Условие |
+|---|---|
+| `DeadLetterQueueNotEmpty` | в любой `*.dlq` есть сообщения дольше минуты |
+| `DeadLetterQueueGrowing` | DLQ выросла больше чем на 5 сообщений за 5 минут |
+| `ServiceDown` | сервис не отвечает на скрейп минуту |
+| `HighServerErrorRate` | больше 5% ответов 5xx в течение 5 минут |
+| `SlowRequests` | p95 времени ответа выше секунды 5 минут |
+| `OutboxRelayStalled` | события outbox просрочены больше минуты (relay остановился или RabbitMQ недоступен) |
+| `OrdersPendingTooLong` | больше 100 неоплаченных заказов 10 минут |
+
+Правила вычисляет сам Prometheus (страница Alerts); уведомления (Alertmanager) не настроены, сначала нужно решить, кого и куда будить.
+Проверено: сообщение в DLQ переводит алерт `pending -> firing` примерно за 90 секунд, после очистки очереди алерт гаснет.
+
+**Трассировка.** OpenTelemetry включается, когда задан `OTEL_ENDPOINT` (`make up-full` указывает на Jaeger). Одна трасса проходит весь путь заказа:
+
+```
+web  POST /checkout
+ └─ api  POST /orders  (SQL-запросы, резерв остатка, outbox)
+     └─ worker  publish order.created
+         └─ worker  consume payments.order_created
+             └─ payment_stub  POST /payments
+                 └─ payment_stub  deliver webhook
+                     └─ api  POST /payments/webhook
+                         └─ worker  publish order.paid
+                             └─ worker  consume notifications.order_paid  (письмо)
+```
+
+Контекст (заголовок W3C `traceparent`) между HTTP-сервисами передаётся автоматически. Через RabbitMQ его передаёт код: событие уходит из БД
+позже и другим процессом, поэтому `traceparent` сохраняется в строке outbox вместе с `correlation_id`, relay кладёт его в заголовок сообщения,
+а consumer продолжает ту же трассу (повторы и DLQ копируют заголовки, поэтому все попытки остаются в одной трассе). Заглушка провайдера
+запоминает контекст запроса «создать платёж» и использует его при отправке webhook'а, чтобы оплата осталась в той же трассе.
+В каждой строке лога рядом с `correlation_id` есть `trace_id` и `span_id`: из Kibana (`trace_id : "<id>"`) можно перейти к трассе в Jaeger и обратно.
+Без `OTEL_ENDPOINT` трассировка выключена и ничего не стоит. Jaeger в dev хранит трассы в памяти (после перезапуска они пропадают).
 
 Остановка контейнера (`docker stop`) во время запроса: запрос завершается успешно, остановка занимает секунды.
 `/health/ready` отвечает `503`, если недоступна БД, при этом `/health/live` остаётся `200`.

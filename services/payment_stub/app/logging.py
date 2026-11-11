@@ -8,6 +8,7 @@ from structlog.processors import JSONRenderer, TimeStamper, format_exc_info
 from structlog.types import EventDict, Processor
 
 from app.config import Settings
+from app.tracing import current_trace_ids
 
 
 def configure_logging(settings: Settings) -> None:
@@ -17,11 +18,18 @@ def configure_logging(settings: Settings) -> None:
         event_dict.setdefault("correlation_id", None)
         return event_dict
 
+    def add_trace_ids(_logger: object, _method: str, event_dict: EventDict) -> EventDict:
+        ids = current_trace_ids()
+        if ids:
+            event_dict["trace_id"], event_dict["span_id"] = ids
+        return event_dict
+
     shared: list[Processor] = [
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,
         TimeStamper(fmt="iso", utc=True, key="timestamp"),
         add_static_fields,
+        add_trace_ids,
     ]
     structlog.configure(
         processors=[*shared, structlog.stdlib.ProcessorFormatter.wrap_for_formatter],

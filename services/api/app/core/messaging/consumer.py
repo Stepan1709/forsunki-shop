@@ -16,6 +16,7 @@ consumer'у (at-least-once); повторная обработка безопа�
 """
 
 import asyncio
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -30,6 +31,7 @@ from aio_pika.abc import (
     AbstractQueue,
     AbstractRobustConnection,
 )
+from opentelemetry.trace import SpanKind
 from sqlalchemy.exc import InterfaceError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -38,6 +40,8 @@ from app.core.messaging.errors import PermanentError, PublishFailed, TemporaryEr
 from app.core.messaging.message import RETRY_HEADER, ParsedMessage, get_retry_count, parse_message
 from app.core.messaging.publisher import Publisher
 from app.core.messaging.topology import QueueSpec, declare_exchanges, declare_queue_set
+from app.core.metrics import CONSUMER_DURATION, CONSUMER_MESSAGES
+from app.core.tracing import span
 
 log = structlog.get_logger("consumer")
 
@@ -166,25 +170,42 @@ class Consumer:
         structlog.contextvars.bind_contextvars(
             correlation_id=message.correlation_id, message_id=message.message_id, queue=self.name
         )
-        try:
-            parsed = parse_message(message)
-            await self._process(parsed)
-            await message.ack()
-        except TRANSIENT_ERRORS as exc:
-            await self._retry_or_dead_letter(message, exc)
-        except PermanentError as exc:
-            await self._dead_letter(message, exc)
-        except Exception as exc:
-            # Неизвестное исключение считаем постоянным: скорее всего это баг, и повторы его не вылечат.
-            log.exception("unexpected_error")
-            await self._dead_letter(message, exc)
+        started = time.perf_counter()
+        # Спан обработки продолжает трассу публикации (traceparent в заголовках). Повторы и DLQ копируют заголовки,
+        # поэтому все попытки обработки одного сообщения остаются в одной трассе.
+        with span(
+            f"consume {self.name}",
+            kind=SpanKind.CONSUMER,
+            parent_headers=message.headers,
+            attributes={
+                "messaging.system": "rabbitmq",
+                "messaging.destination.name": self.name,
+                "messaging.message.id": message.message_id or "",
+            },
+        ):
+            try:
+                parsed = parse_message(message)
+                outcome = await self._process(parsed)
+                await message.ack()
+                CONSUMER_MESSAGES.labels(self.name, outcome).inc()
+            except TRANSIENT_ERRORS as exc:
+                await self._retry_or_dead_letter(message, exc)
+            except PermanentError as exc:
+                await self._dead_letter(message, exc)
+            except Exception as exc:
+                # Неизвестное исключение считаем постоянным: скорее всего это баг, и повторы его не вылечат.
+                log.exception("unexpected_error")
+                await self._dead_letter(message, exc)
+            finally:
+                CONSUMER_DURATION.labels(self.name).observe(time.perf_counter() - started)
 
-    async def _process(self, parsed: ParsedMessage) -> None:
+    async def _process(self, parsed: ParsedMessage) -> str:
+        """Возвращает исход для метрик: processed или duplicate."""
         async with self._session_factory() as session:
             # Запись inbox и бизнес-эффект в ОДНОЙ транзакции: откат уберёт обе.
             if not await inbox.try_register(session, parsed.message_id, self.name):
                 log.info("duplicate_skipped")
-                return
+                return "duplicate"
             await self._sub.handler(
                 MessageContext(
                     session=session,
@@ -196,6 +217,7 @@ class Consumer:
                 )
             )
             await session.commit()
+        return "processed"
 
     async def _retry_or_dead_letter(self, message: AbstractIncomingMessage, exc: Exception) -> None:
         spec = self._sub.spec
@@ -216,6 +238,7 @@ class Consumer:
             return
         log.warning("message_scheduled_for_retry", attempt=attempt, error=type(exc).__name__)
         await message.ack()
+        CONSUMER_MESSAGES.labels(self.name, "retried").inc()
 
     async def _dead_letter(
         self, message: AbstractIncomingMessage, exc: Exception, *, reason_prefix: str = ""
@@ -235,3 +258,4 @@ class Consumer:
             return
         log.error("message_dead_lettered", error=type(exc).__name__)
         await message.ack()
+        CONSUMER_MESSAGES.labels(self.name, "dead_lettered").inc()

@@ -24,6 +24,7 @@ from starlette.types import Lifespan
 from app.config import Settings
 from app.logging import configure_logging
 from app.storage import Payment, Storage
+from app.tracing import current_traceparent, instrument_app, setup_tracing, shutdown_tracing
 from app.webhooks import deliver_once, deliver_with_retries, redeliver_loop
 
 log = structlog.get_logger("stub")
@@ -70,6 +71,7 @@ def make_lifespan(settings: Settings, client: httpx.AsyncClient | None) -> Lifes
             if client is None:
                 await http.aclose()
             storage.close()
+            shutdown_tracing()
 
     return lifespan
 
@@ -79,6 +81,7 @@ def create_app(
 ) -> FastAPI:
     settings = settings or Settings()  # type: ignore[call-arg]
     configure_logging(settings)
+    setup_tracing(settings)
     app = FastAPI(title="ForsunkiShop Payment Stub", lifespan=make_lifespan(settings, client))
     app.state.settings = settings
     app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
@@ -124,6 +127,7 @@ def create_app(
                 "description": body.description,
                 "return_url": body.return_url,
                 "correlation_id": x_request_id,
+                "traceparent": current_traceparent(),
             }
         )
         if not created and (
@@ -204,4 +208,5 @@ def create_app(
     ) -> RedirectResponse:
         return await finish(payment_id, "failed", request, background, store)
 
+    instrument_app(app)
     return app
