@@ -41,6 +41,19 @@ services:
     networks: [data, dev]
     ports: ["127.0.0.1:5601:5601"]   # http://localhost:5601
 
+  jaeger:
+    networks: [data, dev]
+    ports: ["127.0.0.1:16686:16686"]   # http://localhost:16686
+
+  # Метрики: порты только на localhost.
+  prometheus:
+    networks: [data, dev]
+    ports: ["127.0.0.1:9090:9090"]   # http://localhost:9090 (Alerts: правила алертов)
+
+  grafana:
+    networks: [data, dev]
+    ports: ["127.0.0.1:3000:3000"]   # http://localhost:3000, пользователь admin, пароль в deploy/secrets/dev/grafana_admin_password
+
   # Логи уходят и в S3: перед стартом нужен бакет с правилом хранения.
   fluent-bit:
     depends_on:

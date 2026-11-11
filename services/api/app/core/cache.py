@@ -23,6 +23,8 @@ import structlog
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
+from app.core.metrics import CACHE_REQUESTS
+
 log = structlog.get_logger("cache")
 
 VERSION_KEY = "cat:version"
@@ -68,6 +70,7 @@ class Cache:
         try:
             cached = await self._redis.get(key)
             if cached is not None:
+                CACHE_REQUESTS.labels("hit").inc()
                 return json.loads(cached), True
 
             lock_key = f"lock:{key}"
@@ -76,6 +79,7 @@ class Cache:
                 try:
                     value = await loader()
                     await self._redis.set(key, json.dumps(value), ex=self._with_jitter(ttl_seconds))
+                    CACHE_REQUESTS.labels("miss").inc()
                     return value, False
                 finally:
                     await self._redis.eval(_UNLOCK_SCRIPT, 1, lock_key, token)
@@ -85,11 +89,15 @@ class Cache:
                 await asyncio.sleep(_WAIT_STEP_SECONDS)
                 cached = await self._redis.get(key)
                 if cached is not None:
+                    CACHE_REQUESTS.labels(
+                        "hit"
+                    ).inc()  # дождались результата соседнего запроса: БД не нагружена
                     return json.loads(cached), True
         except RedisError as exc:
             log.warning("cache_unavailable", op="get_or_load", error=type(exc).__name__)
 
         # Redis недоступен или чужой запрос не успел: отвечаем напрямую из БД, не кладя результат в кэш.
+        CACHE_REQUESTS.labels("bypass").inc()
         return await loader(), False
 
     @staticmethod

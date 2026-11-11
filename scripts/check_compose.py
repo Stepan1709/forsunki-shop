@@ -11,7 +11,7 @@ import sys
 COMMAND = [
     "docker", "compose", "--env-file", ".env",
     "-f", "deploy/compose.yml", "-f", "deploy/compose.dev.yml",
-    "--profile", "logging", "--profile", "monitoring",
+    "--profile", "logging", "--profile", "monitoring", "--profile", "tracing",
     "config", "--format", "json",
 ]  # fmt: skip
 LABEL = "com.docker.compose.service"

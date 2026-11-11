@@ -53,9 +53,14 @@ class Publisher:
         *,
         message_id: uuid.UUID,
         correlation_id: str | None,
+        headers: dict[str, Any] | None = None,
     ) -> None:
         message = build_message(
-            routing_key, data, message_id=message_id, correlation_id=correlation_id
+            routing_key,
+            data,
+            message_id=message_id,
+            correlation_id=correlation_id,
+            headers=headers,
         )
         await self._publish(self._events, routing_key, message)
 

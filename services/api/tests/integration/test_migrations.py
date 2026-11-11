@@ -3,6 +3,7 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 from testcontainers.community.postgres import PostgresContainer
@@ -38,8 +39,10 @@ def test_upgrade_downgrade_upgrade(tmp_path: Path) -> None:
         cfg = Config(str(API_ROOT / "alembic.ini"))
         cfg.attributes["settings"] = settings
 
+        # Ожидаемая версия берётся из самих скриптов миграций: тест не нужно править при каждой новой миграции.
+        head = ScriptDirectory.from_config(cfg).get_current_head()
         command.upgrade(cfg, "head")
-        assert asyncio.run(_current_revision(settings)) == "0008"
+        assert asyncio.run(_current_revision(settings)) == head
         # Модели и миграции не расходятся: autogenerate не находит отличий.
         command.check(cfg)
 
@@ -48,4 +51,4 @@ def test_upgrade_downgrade_upgrade(tmp_path: Path) -> None:
         assert asyncio.run(_current_revision(settings)) is None
 
         command.upgrade(cfg, "head")  # повторное применение после отката
-        assert asyncio.run(_current_revision(settings)) == "0008"
+        assert asyncio.run(_current_revision(settings)) == head

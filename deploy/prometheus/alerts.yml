@@ -1,0 +1,59 @@
+# Правила алертов. Prometheus вычисляет их сам и показывает состояние на странице Alerts (а также в Grafana).
+# Отправка уведомлений (Alertmanager: письмо, Telegram) намеренно не настроена: сначала нужно решить, кого и куда будить.
+groups:
+  - name: forsunki
+    rules:
+      - alert: DeadLetterQueueNotEmpty
+        # Любое сообщение в DLQ значит, что обработка не удалась окончательно и нужен разбор человеком.
+        expr: sum by (queue) (rabbitmq_detailed_queue_messages_ready{queue=~".*[.]dlq"}) > 0
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: "В очереди {{ $labels.queue }} есть недоставленные сообщения ({{ $value }})"
+
+      - alert: DeadLetterQueueGrowing
+        # Не просто лежит, а растёт: идёт поток ошибок.
+        expr: sum by (queue) (delta(rabbitmq_detailed_queue_messages_ready{queue=~".*[.]dlq"}[5m])) > 5
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "DLQ {{ $labels.queue }} быстро растёт: +{{ $value }} за 5 минут"
+
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "Сервис {{ $labels.job }} не отвечает на скрейп метрик"
+
+      - alert: HighServerErrorRate
+        expr: |
+          sum by (job) (rate(http_requests_total{status=~"5.."}[5m]))
+            / sum by (job) (rate(http_requests_total[5m])) > 0.05
+          and sum by (job) (rate(http_requests_total[5m])) > 0.1
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "У {{ $labels.job }} больше 5% ответов с ошибкой 5xx"
+
+      - alert: SlowRequests
+        expr: histogram_quantile(0.95, sum by (le, job) (rate(http_request_duration_seconds_bucket[5m]))) > 1
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "p95 времени ответа {{ $labels.job }} выше 1 секунды"
+
+      - alert: OutboxRelayStalled
+        # Здоровый relay забирает событие сразу; рост просрочки значит, что события копятся в БД и не уходят в брокер.
+        expr: max(outbox_oldest_overdue_seconds) > 60
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "События outbox не отправляются уже {{ $value }} с: проверьте relay и RabbitMQ"
+
+      - alert: OrdersPendingTooLong
+        expr: max(orders_by_status{status="PENDING_PAYMENT"}) > 100
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Много неоплаченных заказов: {{ $value }} (проверьте платёжного провайдера)"

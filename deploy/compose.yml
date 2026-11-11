@@ -25,6 +25,8 @@ x-api-env: &api-env
   REDIS_HOST: redis
   RABBITMQ_HOST: rabbitmq
   RABBITMQ_USER: ${RABBITMQ_USER:-forsunki}
+  # Адрес приёма трасс (Jaeger). Пусто: трассировка выключена. make up-full задаёт его вместе с профилем tracing.
+  OTEL_ENDPOINT: ${OTEL_ENDPOINT:-}
 
 # Сети разделены по назначению. `data` внутренняя (internal): из неё нет выхода наружу,
 # а хранилища доступны только приложениям. В dev порты пробрасывает compose.dev.yml.
@@ -52,6 +54,8 @@ secrets:
     file: ${SECRETS_DIR:-./secrets/dev}/payment_webhook_secret
   jwt_secret:
     file: ${SECRETS_DIR:-./secrets/dev}/jwt_secret
+  grafana_admin_password:
+    file: ${SECRETS_DIR:-./secrets/dev}/grafana_admin_password
 
 volumes:
   postgres_data: {}
@@ -60,6 +64,8 @@ volumes:
   payment_stub_data: {}
   es_data: {}
   fluent_bit_data: {}
+  prometheus_data: {}
+  grafana_data: {}
 
 services:
   postgres:
@@ -192,6 +198,7 @@ services:
     environment:
       <<: *api-env
       SERVICE_NAME: worker   # поле service в логах воркера
+      WORKER_METRICS_PORT: "9100"   # метрики воркера для Prometheus (внутри сети)
     secrets: [postgres_password, redis_password, rabbitmq_password, jwt_secret, s3_access_key, s3_secret_key, payment_api_key, payment_webhook_secret]
     depends_on:
       migrate: {condition: service_completed_successfully}
@@ -228,6 +235,7 @@ services:
     environment:
       ENV: ${ENV:-dev}
       WEBHOOK_URL: http://api:8000/payments/webhook   # в личном кабинете настоящего провайдера задаётся так же
+      OTEL_ENDPOINT: ${OTEL_ENDPOINT:-}
     secrets: [payment_api_key, payment_webhook_secret]
     volumes:
       - payment_stub_data:/data
@@ -341,6 +349,9 @@ services:
       - fluent_bit_data:/var/lib/fluent-bit
     depends_on:
       elasticsearch: {condition: service_healthy}
+      # Сборщик стартует после настройки шаблона индекса: иначе первые записи создали бы индекс с неверными типами полей.
+      # Заодно Compose понимает, что одноразовый logging_setup должен завершиться, и не считает его выход ошибкой.
+      logging_setup: {condition: service_completed_successfully}
     networks: [data]
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:2020/api/v1/health || exit 1"]
@@ -351,6 +362,83 @@ services:
     deploy:
       resources:
         limits: {cpus: "0.5", memory: 256M}
+    logging: *default-logging
+
+  # ------------------------------------------------------------------------------------------ трассировка
+  # Профиль tracing (make up-full). Jaeger принимает трассы по OTLP/HTTP (порт 4318) и хранит их в памяти (dev): после
+  # перезапуска трассы пропадают. Для prod нужно постоянное хранилище.
+  jaeger:
+    image: jaegertracing/all-in-one:1.64.0
+    profiles: [tracing]
+    restart: unless-stopped
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+      MEMORY_MAX_TRACES: "20000"
+    networks: [data]
+    deploy:
+      resources:
+        limits: {cpus: "0.5", memory: 512M}
+    logging: *default-logging
+
+  # ------------------------------------------------------------------------------------------ метрики
+  # Профиль monitoring (make up-full). Prometheus сам ходит за метриками (pull), поэтому сервисам не нужно знать о нём.
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    profiles: [monitoring]
+    restart: unless-stopped
+    init: true
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    networks: [data]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    deploy:
+      resources:
+        limits: {cpus: "0.5", memory: 512M}
+    logging: *default-logging
+
+  # Grafana: источник данных и дашборд создаются из файлов репозитория (provisioning), вручную ничего настраивать не нужно.
+  # Пароль администратора берётся из файла секрета (поддержка суффикса __FILE).
+  grafana:
+    image: grafana/grafana:11.4.0
+    profiles: [monitoring]
+    restart: unless-stopped
+    init: true
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/forsunki.json
+    secrets: [grafana_admin_password]
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      prometheus: {condition: service_healthy}
+    networks: [data]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    deploy:
+      resources:
+        limits: {cpus: "0.5", memory: 384M}
     logging: *default-logging
 
   # Сайт: FastAPI + Jinja2 + HTMX. Ходит в api по HTTP, сессии (токены пользователей) хранит в Redis.
@@ -367,6 +455,7 @@ services:
       ENV: ${ENV:-dev}
       API_URL: http://api:8000
       REDIS_HOST: redis
+      OTEL_ENDPOINT: ${OTEL_ENDPOINT:-}
     secrets: [redis_password]
     depends_on:
       api: {condition: service_healthy}

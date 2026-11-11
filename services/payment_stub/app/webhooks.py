@@ -11,6 +11,7 @@ import structlog
 from app.config import Settings
 from app.signing import sign
 from app.storage import Payment, Storage
+from app.tracing import span
 
 log = structlog.get_logger("webhooks")
 
@@ -42,7 +43,9 @@ async def deliver_once(settings: Settings, client: httpx.AsyncClient, payment: P
     if payment.correlation_id:
         headers["X-Request-ID"] = payment.correlation_id
     try:
-        response = await client.post(settings.webhook_url, content=body, headers=headers)
+        # Спан продолжает трассу запроса «создать платёж» (traceparent сохранён в платеже); httpx добавит его в заголовки.
+        with span("deliver webhook", parent_traceparent=payment.traceparent):
+            response = await client.post(settings.webhook_url, content=body, headers=headers)
     except httpx.HTTPError as exc:
         log.warning("webhook_failed", payment_id=payment.id, error=type(exc).__name__)
         return False

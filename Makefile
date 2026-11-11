@@ -2,7 +2,7 @@
 SHELL := /bin/bash
 COMPOSE := docker compose --env-file .env -f deploy/compose.yml -f deploy/compose.dev.yml
 SERVICES := api web payment_stub
-SECRETS := postgres_password redis_password rabbitmq_password jwt_secret s3_access_key s3_secret_key payment_api_key payment_webhook_secret
+SECRETS := postgres_password redis_password rabbitmq_password jwt_secret s3_access_key s3_secret_key payment_api_key payment_webhook_secret grafana_admin_password
 
 .DEFAULT_GOAL := help
 .PHONY: help env secrets up up-full down logs migrate test e2e check-compose lint fmt create-admin seed bench
@@ -29,11 +29,11 @@ secrets: ## Сгенерировать dev-секреты в deploy/secrets/dev 
 up: env secrets ## Поднять ядро (postgres, redis, rabbitmq + dev-инструменты)
 	$(COMPOSE) up -d --build --wait
 
-up-full: up ## Ядро + логирование и метрики (профили logging и monitoring)
-	$(COMPOSE) --profile logging --profile monitoring up -d --wait
+up-full: env secrets ## Ядро + логи, метрики и трассировка (профили logging, monitoring, tracing)
+	OTEL_ENDPOINT=http://jaeger:4318 $(COMPOSE) --profile logging --profile monitoring --profile tracing up -d --build --wait
 
 down: ## Остановить
-	$(COMPOSE) --profile logging --profile monitoring down
+	$(COMPOSE) --profile logging --profile monitoring --profile tracing down
 
 logs: ## Логи всех контейнеров
 	$(COMPOSE) logs -f --tail=100
@@ -46,9 +46,10 @@ test: ## Unit + интеграционные тесты всех сервисо�
 	  echo "== $$s"; (cd services/$$s && uv run pytest) || exit 1; \
 	done
 
-e2e: ## Сквозные сценарии на запущенном стеке: заказ и оплата через api, путь покупателя через сайт
+e2e: ## Сквозные сценарии на запущенном стеке: заказ и оплата, путь через сайт, метрики и трасса
 	cd services/api && uv run python ../../scripts/e2e_payment.py
 	cd services/api && uv run python ../../scripts/e2e_web.py
+	cd services/api && uv run python ../../scripts/e2e_observability.py
 
 check-compose: ## Проверить, что у всех сервисов настроена ротация Docker-логов
 	python3 scripts/check_compose.py

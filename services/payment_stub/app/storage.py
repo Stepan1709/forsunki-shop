@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS payments (
     description TEXT NOT NULL,
     return_url TEXT NOT NULL,
     correlation_id TEXT,
+    traceparent TEXT,
     status TEXT NOT NULL DEFAULT 'pending',
     event_id TEXT,
     created_at TEXT NOT NULL,
@@ -38,6 +39,9 @@ class Payment:
     description: str
     return_url: str
     correlation_id: str | None
+    traceparent: (
+        str | None
+    )  # контекст трассы запроса «создать платёж»: webhook продолжит ту же трассу
     status: str  # pending | succeeded | failed
     event_id: str | None
     created_at: str
@@ -61,6 +65,10 @@ class Storage:
         self._lock = threading.Lock()  # sqlite3 в одном соединении: доступ по очереди
         with self._lock:
             self._conn.execute(_SCHEMA)
+            # База могла быть создана до появления колонки (том переживает обновление образа): добавляем при необходимости.
+            columns = {row[1] for row in self._conn.execute("PRAGMA table_info(payments)")}
+            if "traceparent" not in columns:
+                self._conn.execute("ALTER TABLE payments ADD COLUMN traceparent TEXT")
             self._conn.commit()
 
     def close(self) -> None:
@@ -80,10 +88,11 @@ class Storage:
             payment_id = uuid.uuid4().hex
             self._conn.execute(
                 "INSERT INTO payments (id, idempotency_key, order_id, amount_kopecks, currency,"
-                " description, return_url, correlation_id, created_at)"
+                " description, return_url, correlation_id, traceparent, created_at)"
                 " VALUES (:id, :idempotency_key, :order_id, :amount_kopecks, :currency,"
-                " :description, :return_url, :correlation_id, :created_at)",
-                {**fields, "id": payment_id, "created_at": _now()},
+                " :description, :return_url, :correlation_id, :traceparent, :created_at)",
+                # traceparent необязателен: вызывающий код может не знать про трассировку.
+                {"traceparent": None, **fields, "id": payment_id, "created_at": _now()},
             )
             self._conn.commit()
             created = self._conn.execute(

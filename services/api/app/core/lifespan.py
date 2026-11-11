@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import (
 
 from app.core.config import Settings
 from app.core.storage import ImageStorage
+from app.core.tracing import shutdown_tracing
 
 log = structlog.get_logger("lifespan")
 
@@ -47,6 +48,8 @@ async def resources_lifespan(app: FastAPI) -> AsyncIterator[None]:
     # AsyncExitStack закрывает ресурсы в обратном порядке, а если старт упал на середине,
     # уже созданные всё равно будут закрыты.
     async with AsyncExitStack() as stack:
+        # Регистрируется первым, значит закрывается последним: спаны остановки тоже успеют уйти в Jaeger.
+        stack.callback(shutdown_tracing)
         engine = create_async_engine(
             settings.database_url,
             pool_size=settings.db_pool_size,
