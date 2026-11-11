@@ -3,6 +3,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.clientip import networks_for, resolve_client_ip
 from app.core.config import Settings
 from app.core.deps import get_redis, get_session, get_settings
 from app.core.errors import ForbiddenError, UnauthorizedError
@@ -17,10 +18,15 @@ from app.modules.users.service import AuthService
 _bearer = HTTPBearer(auto_error=False)
 
 
-def get_client_ip(request: Request) -> str:
-    # За nginx здесь будет адрес прокси; реальный IP придёт из заголовка после настройки
-    # доверенных прокси. X-Forwarded-For без этого доверять нельзя: его подделывают.
-    return request.client.host if request.client else "unknown"
+def get_client_ip(request: Request, settings: Settings = Depends(get_settings)) -> str:
+    # Адрес соединения это ближайший прокси (сайт, nginx). Реальный адрес клиента берётся из X-Forwarded-For,
+    # но только если соединение пришло от доверенного прокси: иначе заголовок подделывают (см. core/clientip.py).
+    peer = request.client.host if request.client else None
+    return resolve_client_ip(
+        peer,
+        request.headers.get("x-forwarded-for"),
+        networks_for(tuple(settings.trusted_proxies)),
+    )
 
 
 def get_auth_service(

@@ -31,6 +31,14 @@ class Settings(BaseSettings):
     anonymous_session_ttl_seconds: int = 60 * 60 * 2
     # В prod сайт отдаётся по HTTPS (nginx), тогда cookie помечается Secure.
     cookie_secure: bool = False
+    # Прокси, которым верим в X-Forwarded-For (nginx и сеть docker): откуда берётся настоящий адрес клиента (см. clientip.py).
+    trusted_proxies: list[str] = [
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+        "127.0.0.0/8",
+        "::1/128",
+    ]
 
     # Контакты и тексты (позже заменяются реальными).
     shop_name: str = "Forsunki"

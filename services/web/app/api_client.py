@@ -14,6 +14,7 @@ import httpx
 import structlog
 from redis.exceptions import RedisError
 
+from app.clientip import current_client_ip
 from app.logging import CORRELATION_HEADER, current_correlation_id
 from app.sessions import Session, SessionStore
 
@@ -149,6 +150,10 @@ class ApiClient:
         correlation_id = current_correlation_id()
         if correlation_id:
             merged[CORRELATION_HEADER] = correlation_id
+        client_ip = current_client_ip()
+        if client_ip:
+            # api считает лимиты по адресу клиента; веб-сервер для него доверенный прокси (см. clientip.py).
+            merged["X-Forwarded-For"] = client_ip
         if auth and self._session.get("access"):
             merged["Authorization"] = f"Bearer {self._session.get('access')}"
         try:
