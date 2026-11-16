@@ -12,6 +12,8 @@ from app.core.tracing import instrument_app, setup_tracing
 from app.modules.cart.router import router as cart_router
 from app.modules.catalog.admin_router import router as catalog_admin_router
 from app.modules.catalog.router import router as catalog_router
+from app.modules.content.router import admin_router as content_admin_router
+from app.modules.content.router import router as content_router
 from app.modules.orders.router import router as orders_router
 from app.modules.payments.router import router as payments_router
 from app.modules.repair.router import router as repair_router
@@ -45,6 +47,8 @@ def create_app(
     app.include_router(users_router)
     app.include_router(catalog_router)
     app.include_router(catalog_admin_router)
+    app.include_router(content_router)
+    app.include_router(content_admin_router)
     app.include_router(cart_router)
     app.include_router(orders_router)
     app.include_router(payments_router)

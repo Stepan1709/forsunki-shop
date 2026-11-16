@@ -18,6 +18,15 @@ USERS = {
     "admin@example.com": ("pass-12345", "admin"),
 }
 
+ABOUT: dict[str, Any] = {
+    "shop": {"slug": "about_shop", "title": "О магазине", "body": "Первый абзац.\n\nВторой абзац."},
+    "repair": {"slug": "about_repair", "title": "Сервис ремонта", "body": "Ремонтируем ТНВД."},
+    "faq": [
+        {"id": 1, "question": "Как оплатить заказ?", "answer": "На странице оплаты."},
+        {"id": 2, "question": "Ремонтируете ТНВД?", "answer": "Да.\n\nЗвоните."},
+    ],
+}
+
 INJECTORS: dict[int, dict[str, Any]] = {
     1: {
         "id": 1,
@@ -161,6 +170,8 @@ class FakeApi:
             if me is None:
                 return self._problem(401, "Требуется авторизация")
             return httpx.Response(200, json={"id": "u-" + me, "email": me, "role": USERS[me][1]})
+        if (m, p) == ("GET", "/content/about"):
+            return httpx.Response(200, json=ABOUT)
         if (m, p) == ("GET", "/health/live"):
             return httpx.Response(200, json={"status": "ok"})
         if (m, p) == ("GET", "/catalog/manufacturers"):
@@ -247,7 +258,9 @@ class FakeApi:
                 return self._problem(409, "Недопустимый переход")
             self.order_status = "CANCELLED"
             return httpx.Response(200, json=self.orders[found.group(1)])
-        if p.startswith("/admin/catalog") or (m in ("PUT", "DELETE") and p.endswith("/image")):
+        if p.startswith(("/admin/catalog", "/admin/content")) or (
+            m in ("PUT", "DELETE") and p.endswith("/image")
+        ):
             return self._admin(call, email)
         return self._problem(404, "Не найдено")
 
@@ -296,10 +309,29 @@ class FakeApi:
             ],
         }
 
+    def _admin_content(self, call: Call) -> httpx.Response:
+        m, p = call.method, call.path
+        if (m, p) == ("GET", "/admin/content"):
+            faq = [{**i, "position": n, "is_active": True} for n, i in enumerate(ABOUT["faq"], 1)]
+            return httpx.Response(200, json={"pages": [ABOUT["shop"], ABOUT["repair"]], "faq": faq})
+        if m == "PUT" and re.fullmatch(r"/admin/content/pages/(about_shop|about_repair)", p):
+            return httpx.Response(200, json={"slug": p.rsplit("/", 1)[1], **call.json})
+        if (m, p) == ("POST", "/admin/content/faq"):
+            return httpx.Response(201, json={"id": 50, "position": 3, **call.json})
+        if m == "PATCH" and re.fullmatch(r"/admin/content/faq/\d+", p):
+            return httpx.Response(200, json={"id": 1, "position": 1, **call.json})
+        if m in ("DELETE", "POST") and re.fullmatch(r"/admin/content/faq/\d+(/move)?", p):
+            if p.endswith("/9999") or "/9999/" in p:
+                return self._problem(404, "Вопрос не найден")
+            return httpx.Response(204)
+        return self._problem(404, "Не найдено")
+
     def _admin(self, call: Call, email: str) -> httpx.Response:
         if USERS[email][1] != "admin":
             return self._problem(403, "Недостаточно прав")
         m, p = call.method, call.path
+        if p.startswith("/admin/content"):
+            return self._admin_content(call)
         if (m, p) == ("GET", "/admin/catalog/injectors"):
             return httpx.Response(
                 200, json={"items": list(INJECTORS.values()), "next_cursor": None}
