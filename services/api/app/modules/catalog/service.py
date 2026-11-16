@@ -64,6 +64,7 @@ def _injector_to_dict(injector: Injector, *, details: bool) -> dict[str, Any]:
         },
         "type": injector.type.value,
         "condition": injector.condition.value,
+        "actuator": injector.actuator.value if injector.actuator else None,
         "price_kopecks": injector.price_kopecks,
         "stock": injector.stock,
         "image_key": injector.image_key,
@@ -104,6 +105,7 @@ class CatalogService:
                 "m": flt.manufacturer,
                 "t": flt.type.value if flt.type else None,
                 "c": flt.condition.value if flt.condition else None,
+                "a": flt.actuator.value if flt.actuator else None,
                 "q": flt.q,
                 "after": after_id,
                 "limit": limit,
@@ -178,3 +180,19 @@ class CatalogService:
 
         card, _ = await self.get_card(injector_id)
         return card
+
+    async def delete_image(self, injector_id: int) -> None:
+        """Убирает картинку товара. Повторный вызов безопасен: если картинки нет, ничего не происходит."""
+        injector = await self._repo.get_injector(injector_id, only_active=False)
+        if injector is None:
+            raise NotFoundError("Товар не найден")
+        old_key = injector.image_key
+        if old_key is None:
+            return
+        injector.image_key = None
+        await self._session.commit()
+        await self._cache.bump_version()
+        # Объект удаляем после commit, как и при замене картинки: если commit упадёт, ссылка в БД не
+        # окажется «висящей». Худший случай обратного порядка (сбой удаления) оставляет лишний файл в S3.
+        await self._storage.delete(old_key)
+        log.info("injector_image_deleted", injector_id=injector_id)

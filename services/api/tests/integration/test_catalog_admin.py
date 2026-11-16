@@ -27,6 +27,40 @@ async def manufacturer_id(client: httpx.AsyncClient) -> int:
     return int(items[0]["id"])
 
 
+async def test_actuator_can_be_set_changed_and_cleared(
+    client: httpx.AsyncClient, admin_headers: dict[str, str], catalog: dict[str, int]
+) -> None:
+    created = (
+        await client.post(
+            BASE,
+            json=new_injector(await manufacturer_id(client), actuator="piezo"),
+            headers=admin_headers,
+        )
+    ).json()
+    assert created["actuator"] == "piezo"
+    url = f"{BASE}/{created['id']}"
+
+    changed = await client.patch(url, json={"actuator": "electromagnetic"}, headers=admin_headers)
+    assert changed.json()["actuator"] == "electromagnetic"
+
+    # Присланное поле, не затрагивающее привод, оставляет его как был.
+    kept = await client.patch(url, json={"stock": 9}, headers=admin_headers)
+    assert kept.json()["actuator"] == "electromagnetic"
+
+    cleared = await client.patch(url, json={"actuator": None}, headers=admin_headers)
+    assert cleared.status_code == 200
+    assert cleared.json()["actuator"] is None
+    # Очистка видна и покупателям (кэш каталога сброшен).
+    assert (await client.get(f"/catalog/injectors/{created['id']}")).json()["actuator"] is None
+
+
+async def test_unknown_actuator_is_rejected(
+    client: httpx.AsyncClient, admin_headers: dict[str, str], catalog: dict[str, int]
+) -> None:
+    body = new_injector(await manufacturer_id(client), actuator="steam")
+    assert (await client.post(BASE, json=body, headers=admin_headers)).status_code == 422
+
+
 async def test_admin_api_requires_admin_role(
     client: httpx.AsyncClient, customer_headers: dict[str, str], catalog: dict[str, int]
 ) -> None:

@@ -26,6 +26,7 @@ INJECTORS: dict[int, dict[str, Any]] = {
         "manufacturer": {"id": 1, "name": "Bosch", "slug": "bosch"},
         "type": "common_rail",
         "condition": "new",
+        "actuator": "piezo",
         "price_kopecks": 4_500_000,
         "stock": 5,
         "image_url": None,
@@ -246,7 +247,7 @@ class FakeApi:
                 return self._problem(409, "Недопустимый переход")
             self.order_status = "CANCELLED"
             return httpx.Response(200, json=self.orders[found.group(1)])
-        if p.startswith("/admin/catalog") or (m == "PUT" and p.endswith("/image")):
+        if p.startswith("/admin/catalog") or (m in ("PUT", "DELETE") and p.endswith("/image")):
             return self._admin(call, email)
         return self._problem(404, "Не найдено")
 
@@ -313,4 +314,6 @@ class FakeApi:
             return httpx.Response(200, json={**INJECTORS[1], **call.json})
         if m == "PUT":
             return httpx.Response(200, json=INJECTORS[1])
+        if m == "DELETE" and re.fullmatch(r"/catalog/injectors/(\d+)/image", p):
+            return httpx.Response(204)
         return self._problem(404, "Не найдено")

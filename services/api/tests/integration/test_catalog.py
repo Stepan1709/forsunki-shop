@@ -36,6 +36,33 @@ async def test_filter_by_manufacturer_type_and_condition(
     ]
 
 
+async def test_filter_by_actuator_and_actuator_in_response(
+    client: httpx.AsyncClient, catalog: dict[str, int]
+) -> None:
+    assert await list_ids(client, actuator="electromagnetic") == [catalog["bosch_new"]]
+    assert await list_ids(client, actuator="piezo") == [catalog["denso_new"]]
+    # Привод независим от типа: пьезо Common Rail в паре с фильтром типа.
+    assert await list_ids(client, actuator="piezo", type="common_rail") == [catalog["denso_new"]]
+    assert await list_ids(client, actuator="piezo", type="pump_injector") == []
+
+    items = (await client.get("/catalog/injectors")).json()["items"]
+    by_id = {i["id"]: i for i in items}
+    assert by_id[catalog["denso_new"]]["actuator"] == "piezo"
+    assert by_id[catalog["bosch_pd"]]["actuator"] is None  # у товара привод не указан
+    card = (await client.get(f"/catalog/injectors/{catalog['bosch_new']}")).json()
+    assert card["actuator"] == "electromagnetic"
+
+
+async def test_actuator_filter_is_part_of_cache_key(
+    client: httpx.AsyncClient, catalog: dict[str, int]
+) -> None:
+    # Два одинаковых списка, различающихся только приводом, не должны делить один кэшированный ответ.
+    all_ids = await list_ids(client)
+    piezo_ids = await list_ids(client, actuator="piezo")
+    assert piezo_ids != all_ids
+    assert await list_ids(client) == all_ids
+
+
 async def test_unknown_filter_value_is_validation_error(client: httpx.AsyncClient) -> None:
     response = await client.get("/catalog/injectors", params={"type": "rocket"})
 

@@ -24,13 +24,19 @@ async def shop_list(
     manufacturer: str = "",
     type: str = "",
     condition: str = "",
+    actuator: str = "",
     q: str = "",
     cursor: str = "",
 ) -> Response:
     q = q.strip()
     notice: str | None = None
     params: dict[str, Any] = {"limit": PAGE_SIZE}
-    filters = {"manufacturer": manufacturer, "type": type, "condition": condition}
+    filters = {
+        "manufacturer": manufacturer,
+        "type": type,
+        "condition": condition,
+        "actuator": actuator,
+    }
     params.update({k: v for k, v in filters.items() if v})
     if q:
         if len(q) >= MIN_QUERY:

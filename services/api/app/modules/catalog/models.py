@@ -26,6 +26,13 @@ class InjectorType(enum.StrEnum):
     PUMP_INJECTOR = "pump_injector"  # насос-форсунка
 
 
+class InjectorActuator(enum.StrEnum):
+    """Привод клапана форсунки. Это отдельный признак от типа: он бывает и у Common Rail, и у насос-форсунок."""
+
+    ELECTROMAGNETIC = "electromagnetic"  # электромагнитная
+    PIEZO = "piezo"  # пьезофорсунка
+
+
 class InjectorCondition(enum.StrEnum):
     NEW = "new"
     REMANUFACTURED = "remanufactured"  # восстановленная
@@ -98,6 +105,10 @@ class Injector(Base):
     condition: Mapped[InjectorCondition] = mapped_column(
         _enum(InjectorCondition, "injector_condition")
     )
+    # Необязательный признак: у товаров, добавленных до его появления, он пуст и показывается только когда задан.
+    actuator: Mapped[InjectorActuator | None] = mapped_column(
+        _enum(InjectorActuator, "injector_actuator"), default=None
+    )
     # Деньги только целыми копейками: float даёт ошибки округления (0.1 + 0.2 != 0.3).
     price_kopecks: Mapped[int] = mapped_column(Integer)
     stock: Mapped[int] = mapped_column(Integer, default=0)
@@ -123,6 +134,7 @@ class Injector(Base):
         Index("ix_injectors_manufacturer_id", "manufacturer_id"),
         Index("ix_injectors_type", "type"),
         Index("ix_injectors_condition", "condition"),
+        Index("ix_injectors_actuator", "actuator"),
         Index(
             "ix_injectors_oem_normalized_trgm",
             "oem_normalized",

@@ -109,3 +109,51 @@ async def test_upload_to_missing_injector_is_404(
     response = await put_image(client, 999999, PNG, "image/png", admin_headers)
 
     assert response.status_code == 404
+
+
+async def test_admin_deletes_image_object_and_card_loses_url(
+    client: httpx.AsyncClient, catalog: dict[str, int], admin_headers: dict[str, str]
+) -> None:
+    injector_id = catalog["bosch_new"]
+    url = f"/catalog/injectors/{injector_id}"
+    uploaded = (await put_image(client, injector_id, PNG, "image/png", admin_headers)).json()
+    assert (await client.get(url)).json()["image_url"]  # карточка с картинкой попала в кэш
+
+    response = await client.delete(f"{url}/image", headers=admin_headers)
+
+    assert response.status_code == 204
+    assert (await client.get(url)).json()["image_url"] is None  # кэш сброшен
+    async with httpx.AsyncClient() as plain:
+        assert (await plain.get(uploaded["image_url"])).status_code == 404  # объект удалён из S3
+
+
+async def test_deleting_image_twice_or_without_image_is_not_an_error(
+    client: httpx.AsyncClient, catalog: dict[str, int], admin_headers: dict[str, str]
+) -> None:
+    injector_id = catalog["bosch_new"]
+    await put_image(client, injector_id, PNG, "image/png", admin_headers)
+    path = f"/catalog/injectors/{injector_id}/image"
+
+    assert (await client.delete(path, headers=admin_headers)).status_code == 204
+    assert (await client.delete(path, headers=admin_headers)).status_code == 204  # повтор безопасен
+
+
+async def test_deleting_image_works_for_hidden_item_and_checks_existence(
+    client: httpx.AsyncClient, catalog: dict[str, int], admin_headers: dict[str, str]
+) -> None:
+    hidden = catalog["hidden"]
+    await put_image(client, hidden, PNG, "image/png", admin_headers)
+    assert (
+        await client.delete(f"/catalog/injectors/{hidden}/image", headers=admin_headers)
+    ).status_code == 204
+    assert (
+        await client.delete("/catalog/injectors/999999/image", headers=admin_headers)
+    ).status_code == 404
+
+
+async def test_only_admin_can_delete_image(
+    client: httpx.AsyncClient, catalog: dict[str, int], customer_headers: dict[str, str]
+) -> None:
+    path = f"/catalog/injectors/{catalog['bosch_new']}/image"
+    assert (await client.delete(path)).status_code == 401
+    assert (await client.delete(path, headers=customer_headers)).status_code == 403

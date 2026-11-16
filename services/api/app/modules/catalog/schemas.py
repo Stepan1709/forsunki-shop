@@ -1,6 +1,6 @@
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.modules.catalog.models import InjectorCondition, InjectorType
+from app.modules.catalog.models import InjectorActuator, InjectorCondition, InjectorType
 
 
 class ManufacturerOut(BaseModel):
@@ -25,6 +25,7 @@ class InjectorListItem(BaseModel):
     manufacturer: ManufacturerOut
     type: InjectorType
     condition: InjectorCondition
+    actuator: InjectorActuator | None = None  # привод клапана; None, если не указан
     price_kopecks: int  # цена в копейках (целое число: без ошибок округления)
     stock: int
     image_url: str | None = None  # временная ссылка на картинку, строится при каждом ответе
@@ -62,6 +63,7 @@ class InjectorCreate(BaseModel):
     manufacturer_id: int
     type: InjectorType
     condition: InjectorCondition
+    actuator: InjectorActuator | None = None
     price_kopecks: int = Field(ge=0, le=100_000_000)
     stock: int = Field(ge=0, le=100_000)
     is_active: bool = True
@@ -78,6 +80,7 @@ class InjectorUpdate(BaseModel):
     manufacturer_id: int | None = None
     type: InjectorType | None = None
     condition: InjectorCondition | None = None
+    actuator: InjectorActuator | None = None  # присланный null очищает признак
     price_kopecks: int | None = Field(default=None, ge=0, le=100_000_000)
     stock: int | None = Field(default=None, ge=0, le=100_000)
     is_active: bool | None = None

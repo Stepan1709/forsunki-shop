@@ -98,6 +98,7 @@ async def test_admin_create_converts_rubles_to_kopecks(
             "manufacturer_id": "1",
             "type": "common_rail",
             "condition": "new",
+            "actuator": "electromagnetic",
             "price": "45 000,50",
             "stock": "3",
             "description": "Описание",
@@ -111,6 +112,7 @@ async def test_admin_create_converts_rubles_to_kopecks(
     assert sent["engines"] == ["Cummins ISF 2.8", "Renault K9K"]
     assert sent["is_active"] is True
     assert sent["stock"] == 3
+    assert sent["actuator"] == "electromagnetic"
 
 
 async def test_admin_invalid_price_is_reported_without_calling_api(
@@ -177,6 +179,34 @@ async def test_admin_edit_and_hide_product(admin: httpx.AsyncClient, api: FakeAp
     sent = api.called("PATCH", "/admin/catalog/injectors/1")[-1].json
     assert sent["is_active"] is False
     assert sent["price_kopecks"] == 4_600_000
+
+
+async def test_admin_can_delete_product_image(admin: httpx.AsyncClient, api: FakeApi) -> None:
+    from tests.fake_api import INJECTORS
+
+    # У товара 2 картинка есть: на форме появляется кнопка удаления, у товара 1 картинки нет, кнопки нет.
+    with_image = (await admin.get("/admin/products/2")).text
+    assert "Удалить картинку" in with_image
+    assert "Удалить картинку" not in (await admin.get("/admin/products/1")).text
+    assert INJECTORS[2]["image_url"]
+
+    token = csrf_of(with_image)
+    response = await admin.post("/admin/products/2/image/delete", data={"csrf_token": token})
+    assert response.status_code == 303
+    assert response.headers["location"] == "/admin/products/2"
+    assert api.called("DELETE", "/catalog/injectors/2/image")
+
+
+async def test_image_delete_requires_csrf(admin: httpx.AsyncClient, api: FakeApi) -> None:
+    assert (await admin.post("/admin/products/2/image/delete", data={})).status_code == 403
+    assert not api.called("DELETE", "/catalog/injectors/2/image")
+
+
+async def test_image_delete_is_closed_to_non_admin(buyer: httpx.AsyncClient, api: FakeApi) -> None:
+    token = csrf_of((await buyer.get("/profile")).text)
+    response = await buyer.post("/admin/products/2/image/delete", data={"csrf_token": token})
+    assert response.status_code == 403
+    assert not api.called("DELETE", "/catalog/injectors/2/image")
 
 
 async def test_admin_image_upload_limits(admin: httpx.AsyncClient, api: FakeApi) -> None:
