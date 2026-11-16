@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.catalog.models import (
     Engine,
     Injector,
+    InjectorActuator,
     InjectorCondition,
     InjectorType,
     Manufacturer,
@@ -28,6 +29,7 @@ class InjectorFilter:
     manufacturer: str | None = None  # slug производителя
     type: InjectorType | None = None
     condition: InjectorCondition | None = None
+    actuator: InjectorActuator | None = None  # привод клапана
     q: str | None = None  # поиск по артикулу или применимости
     include_inactive: bool = False  # только для администратора: показывать и снятые с продажи
 
@@ -63,6 +65,8 @@ class CatalogRepository:
             stmt = stmt.where(Injector.type == flt.type)
         if flt.condition:
             stmt = stmt.where(Injector.condition == flt.condition)
+        if flt.actuator:
+            stmt = stmt.where(Injector.actuator == flt.actuator)
         if flt.q:
             stmt = stmt.where(self._search_condition(flt.q))
 

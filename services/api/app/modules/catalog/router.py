@@ -5,7 +5,7 @@ from app.core.cache import Cache
 from app.core.config import Settings
 from app.core.deps import get_cache, get_session, get_settings, get_storage
 from app.core.storage import ImageStorage
-from app.modules.catalog.models import InjectorCondition, InjectorType
+from app.modules.catalog.models import InjectorActuator, InjectorCondition, InjectorType
 from app.modules.catalog.repository import MIN_SEARCH_LENGTH, InjectorFilter
 from app.modules.catalog.schemas import InjectorCard, InjectorPage, ManufacturerOut
 from app.modules.catalog.service import DEFAULT_LIMIT, MAX_LIMIT, CatalogService
@@ -42,6 +42,9 @@ async def list_injectors(
     manufacturer: str | None = Query(None, description="slug производителя, например bosch"),
     type_: InjectorType | None = Query(None, alias="type"),
     condition: InjectorCondition | None = None,
+    actuator: InjectorActuator | None = Query(
+        None, description="привод: electromagnetic или piezo"
+    ),
     q: str | None = Query(
         None, min_length=MIN_SEARCH_LENGTH, max_length=64, description="артикул или двигатель"
     ),
@@ -49,7 +52,9 @@ async def list_injectors(
     limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
     service: CatalogService = Depends(get_catalog_service),
 ) -> InjectorPage:
-    flt = InjectorFilter(manufacturer=manufacturer, type=type_, condition=condition, q=q)
+    flt = InjectorFilter(
+        manufacturer=manufacturer, type=type_, condition=condition, actuator=actuator, q=q
+    )
     page, hit = await service.list_injectors(flt, cursor, limit)
     _cache_header(response, hit)
     return page
@@ -78,3 +83,13 @@ async def upload_injector_image(
     # в память файл неограниченного размера.
     data = await file.read(settings.image_max_bytes + 1)
     return await service.upload_image(injector_id, data, file.content_type or "")
+
+
+@router.delete("/injectors/{injector_id}/image", status_code=204)
+async def delete_injector_image(
+    injector_id: int,
+    _admin: User = Depends(require_admin),
+    service: CatalogService = Depends(get_catalog_service),
+) -> Response:
+    await service.delete_image(injector_id)
+    return Response(status_code=204)

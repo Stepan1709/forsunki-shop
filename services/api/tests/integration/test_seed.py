@@ -1,7 +1,13 @@
 from fastapi import FastAPI
 from sqlalchemy import func, select
 
-from app.modules.catalog.models import Engine, Injector, InjectorCondition, InjectorType
+from app.modules.catalog.models import (
+    Engine,
+    Injector,
+    InjectorActuator,
+    InjectorCondition,
+    InjectorType,
+)
 from app.modules.catalog.repository import normalize_oem
 from app.seed import reset_catalog, seed_catalog
 
@@ -23,6 +29,8 @@ async def test_seed_creates_consistent_catalog(app: FastAPI) -> None:
     assert all(i.price_kopecks > 0 and i.stock >= 0 for i in injectors)
     assert {i.condition for i in injectors} == set(InjectorCondition)
     assert {i.type for i in injectors} == set(InjectorType)
+    # Привод задан у всех демо-товаров, встречаются оба вида.
+    assert {i.actuator for i in injectors} == set(InjectorActuator)
     reman = [i for i in injectors if i.condition == InjectorCondition.REMANUFACTURED]
     assert reman  # восстановленные дешевле новых аналогов, но не бесплатны
     assert all(i.price_kopecks > 0 for i in reman)

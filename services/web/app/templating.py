@@ -29,6 +29,8 @@ STATUS_LABELS = {
 }
 CONDITION_LABELS = {"new": "Новая", "remanufactured": "Восстановленная"}
 TYPE_LABELS = {"common_rail": "Common Rail", "pump_injector": "Насос-форсунка"}
+# Привод клапана: отдельный признак, не зависит от типа (бывает и у Common Rail, и у насос-форсунок).
+ACTUATOR_LABELS = {"electromagnetic": "Электромагнитная", "piezo": "Пьезо"}
 
 
 def money(kopecks: int) -> str:
@@ -64,6 +66,7 @@ templates.env.globals.update(
     status_labels=STATUS_LABELS,
     condition_labels=CONDITION_LABELS,
     type_labels=TYPE_LABELS,
+    actuator_labels=ACTUATOR_LABELS,
     rubles_input=rubles_input,
 )
 

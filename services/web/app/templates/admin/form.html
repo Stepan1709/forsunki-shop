@@ -40,6 +40,13 @@
         </select>
       </div>
       <div>
+        <label class="label" for="actuator">Привод</label>
+        <select id="actuator" name="actuator" class="input">
+          <option value="">Не указан</option>
+          {% for key, label in actuator_labels.items() %}<option value="{{ key }}" {{ 'selected' if values.actuator == key }}>{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
         <label class="label" for="price">Цена, ₽ *</label>
         <input id="price" name="price" inputmode="decimal" class="input" required value="{{ values.price }}" placeholder="45000,00">
         {% if form_errors.price or form_errors.price_kopecks %}<p class="field-error">{{ form_errors.price or form_errors.price_kopecks }}</p>{% endif %}
@@ -77,6 +84,12 @@
       <p class="text-xs text-slate-500">JPEG, PNG или WebP до 2 МБ.</p>
       <button class="btn-secondary" type="submit">Загрузить</button>
     </form>
+    {% if item.image_url %}
+    <form method="post" action="/admin/products/{{ item.id }}/image/delete">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn-danger" type="submit">Удалить картинку</button>
+    </form>
+    {% endif %}
     <a href="/shop/{{ item.id }}" class="text-sm text-brand-600 hover:underline">Открыть в магазине</a>
   </aside>
   {% endif %}

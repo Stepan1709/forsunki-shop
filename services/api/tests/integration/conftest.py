@@ -190,6 +190,7 @@ async def catalog(app: FastAPI) -> dict[str, int]:
     from app.modules.catalog.models import (
         Engine,
         Injector,
+        InjectorActuator,
         InjectorCondition,
         InjectorType,
         Manufacturer,
@@ -218,6 +219,7 @@ async def catalog(app: FastAPI) -> dict[str, int]:
             oem_normalized="0445110183",
             title="Bosch новая",
             manufacturer_id=bosch.id,
+            actuator=InjectorActuator.ELECTROMAGNETIC,
             engines=[om651],
         )
         bosch_reman = make(
@@ -234,6 +236,7 @@ async def catalog(app: FastAPI) -> dict[str, int]:
             oem_normalized="0950005550",
             title="Denso новая",
             manufacturer_id=denso.id,
+            actuator=InjectorActuator.PIEZO,
             engines=[cbab],
         )
         bosch_pd = make(

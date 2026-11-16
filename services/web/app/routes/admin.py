@@ -72,6 +72,7 @@ async def product_edit(
         "manufacturer_id": item["manufacturer"]["id"],
         "type": item["type"],
         "condition": item["condition"],
+        "actuator": item.get("actuator") or "",
         "price": f"{item['price_kopecks'] / 100:.2f}",
         "stock": item["stock"],
         "is_active": item["is_active"],
@@ -106,6 +107,8 @@ def _payload(form: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str]]:
         "manufacturer_id": manufacturer_id,
         "type": form["type"],
         "condition": form["condition"],
+        "actuator": form["actuator"]
+        or None,  # пустой выбор = «не указан»; при правке null очищает привод
         "price_kopecks": price if price is not None else 0,
         "stock": stock,
         "is_active": bool(form["is_active"]),
@@ -152,6 +155,7 @@ def _form(
     manufacturer_id: str,
     type_: str,
     condition: str,
+    actuator: str,
     price: str,
     stock: str,
     is_active: str | None,
@@ -164,6 +168,7 @@ def _form(
         "manufacturer_id": manufacturer_id,
         "type": type_,
         "condition": condition,
+        "actuator": actuator,
         "price": price,
         "stock": stock,
         "is_active": is_active is not None,
@@ -183,6 +188,7 @@ async def product_create(
     condition: Annotated[str, Form()],
     price: Annotated[str, Form()],
     stock: Annotated[str, Form()],
+    actuator: Annotated[str, Form()] = "",
     description: Annotated[str, Form()] = "",
     is_active: Annotated[str | None, Form()] = None,
     engines: Annotated[str, Form()] = "",
@@ -194,6 +200,7 @@ async def product_create(
         manufacturer_id,
         type,
         condition,
+        actuator,
         price,
         stock,
         is_active,
@@ -215,6 +222,7 @@ async def product_update(
     condition: Annotated[str, Form()],
     price: Annotated[str, Form()],
     stock: Annotated[str, Form()],
+    actuator: Annotated[str, Form()] = "",
     description: Annotated[str, Form()] = "",
     is_active: Annotated[str | None, Form()] = None,
     engines: Annotated[str, Form()] = "",
@@ -226,12 +234,28 @@ async def product_update(
         manufacturer_id,
         type,
         condition,
+        actuator,
         price,
         stock,
         is_active,
         engines,
     )
     return await _save(request, api, injector_id, form)
+
+
+@router.post("/products/{injector_id}/image/delete")
+async def product_image_delete(
+    request: Request, api: ApiDep, _admin: AdminDep, injector_id: int
+) -> Response:
+    """Убирает картинку совсем (загрузка новой только заменяет). Повтор безопасен: api отвечает 204 и без картинки."""
+    try:
+        await api.delete(f"/catalog/injectors/{injector_id}/image", auth=True)
+        request.state.session.flash("Картинка удалена.", "success")
+    except ApiError as exc:
+        if exc.status != 404:
+            raise
+        request.state.session.flash(exc.detail, "error")
+    return RedirectResponse(f"/admin/products/{injector_id}", status_code=303)
 
 
 @router.post("/products/{injector_id}/image")

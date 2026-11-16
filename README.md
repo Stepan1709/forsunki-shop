@@ -9,7 +9,7 @@ RabbitMQ) с надёжной обработкой заказов, идемпо�
 
 ## Возможности
 
-- **Каталог:** фильтры по производителю, типу и состоянию, поиск по артикулу (с любыми пробелами и дефисами) и по двигателю,
+- **Каталог:** фильтры по производителю, типу, приводу клапана (электромагнитная или пьезо) и состоянию, поиск по артикулу (с любыми пробелами и дефисами) и по двигателю,
   курсорная пагинация, картинки товаров, кэш в Redis.
 - **Аккаунты:** регистрация и вход (Argon2), короткие JWT и ротируемые refresh-токены, роли покупателя и администратора,
   ограничение частоты запросов.
@@ -95,9 +95,9 @@ make down
 |---|---|
 | `POST /auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout` | регистрация, вход, обновление и отзыв токенов |
 | `GET /users/me` | текущий пользователь (`Authorization: Bearer ...`) |
-| `GET /catalog/injectors` | список: фильтры `manufacturer`, `type`, `condition`, поиск `q`, курсор `cursor`, `limit` до 100 |
+| `GET /catalog/injectors` | список: фильтры `manufacturer`, `type`, `condition`, `actuator` (привод клапана: `electromagnetic` или `piezo`), поиск `q`, курсор `cursor`, `limit` до 100 |
 | `GET /catalog/injectors/{id}`, `GET /catalog/manufacturers` | карточка с применимостью, список производителей |
-| `PUT /catalog/injectors/{id}/image` | загрузка картинки (только admin) |
+| `PUT /catalog/injectors/{id}/image`, `DELETE /catalog/injectors/{id}/image` | загрузка (замена) и удаление картинки (только admin) |
 | `GET /cart`, `PUT /cart/items/{id}`, `DELETE /cart/items/{id}`, `DELETE /cart` | корзина (количество 1-99, не больше остатка) |
 | `POST /orders` (`Idempotency-Key`) | оформить заказ из корзины |
 | `GET /orders`, `GET /orders/{id}` | история (от новых к старым) и карточка; только свои заказы |

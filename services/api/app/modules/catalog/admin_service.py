@@ -23,6 +23,9 @@ from app.modules.catalog.service import decode_cursor, encode_cursor
 
 log = structlog.get_logger("catalog_admin")
 
+# Поля, которые можно очистить, прислав null (все остальные обязательны, null для них значит «не менять»).
+_CLEARABLE_FIELDS = frozenset({"actuator"})
+
 
 class CatalogAdminService:
     def __init__(self, session: AsyncSession, cache: Cache, storage: ImageStorage) -> None:
@@ -44,6 +47,7 @@ class CatalogAdminService:
             },
             "type": injector.type,
             "condition": injector.condition,
+            "actuator": injector.actuator,
             "price_kopecks": injector.price_kopecks,
             "stock": injector.stock,
             "image_url": url,
@@ -85,6 +89,7 @@ class CatalogAdminService:
             manufacturer_id=data.manufacturer_id,
             type=data.type,
             condition=data.condition,
+            actuator=data.actuator,
             price_kopecks=data.price_kopecks,
             stock=data.stock,
             is_active=data.is_active,
@@ -111,7 +116,9 @@ class CatalogAdminService:
         ):
             raise NotFoundError("Производитель не найден")
         for field, value in changes.items():
-            if value is not None:  # null означает «не менять»: обязательные поля нельзя обнулить
+            # null означает «не менять»: обязательные поля нельзя обнулить. Исключение: привод
+            # необязателен, поэтому присланный null его очищает (поле присутствует в запросе явно).
+            if value is not None or field in _CLEARABLE_FIELDS:
                 setattr(injector, field, value)
         if changes.get("oem_number") is not None:
             injector.oem_number = injector.oem_number.strip()

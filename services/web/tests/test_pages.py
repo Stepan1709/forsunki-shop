@@ -46,6 +46,27 @@ async def test_shop_list_full_page_and_htmx_partial(
     assert api.called("GET", "/catalog/injectors")[-1].params["manufacturer"] == "bosch"
 
 
+async def test_shop_actuator_filter_is_forwarded_and_selectable(
+    client: httpx.AsyncClient, api: FakeApi
+) -> None:
+    page = await client.get("/shop?actuator=piezo")
+    assert api.called("GET", "/catalog/injectors")[-1].params["actuator"] == "piezo"
+    assert 'name="actuator"' in page.text
+    assert '<option value="piezo" selected>' in page.text
+    # Без выбора привод в api не передаётся.
+    await client.get("/shop")
+    assert "actuator" not in api.called("GET", "/catalog/injectors")[-1].params
+
+
+async def test_actuator_badge_is_shown_in_list_and_card_only_when_set(
+    client: httpx.AsyncClient,
+) -> None:
+    card = await client.get("/shop/1")
+    assert "Пьезо" in card.text  # у товара 1 привод пьезо
+    listing = await client.get("/shop")
+    assert "Пьезо" in listing.text
+
+
 async def test_shop_escapes_html_from_catalog(client: httpx.AsyncClient, api: FakeApi) -> None:
     from tests.fake_api import INJECTORS
 

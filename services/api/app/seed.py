@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.catalog.models import (
     Engine,
     Injector,
+    InjectorActuator,
     InjectorCondition,
     InjectorType,
     Manufacturer,
@@ -73,17 +74,24 @@ class _Series:
     manufacturer: str
     type: InjectorType
     price_rub: tuple[int, int]  # диапазон цены новой форсунки, рубли
+    actuator: InjectorActuator  # привод клапана
 
 
 # Форматы артикулов: Bosch "0 445 110 183" (Common Rail) и "0 414 720 xxx" (насос-форсунки),
 # Denso "095000-5550", Delphi "EJBR0xxxxD", Siemens "A2C59513554" / "5WS40xxx-Z".
 SERIES = [
-    _Series("bosch", InjectorType.COMMON_RAIL, (18_000, 65_000)),
-    _Series("denso", InjectorType.COMMON_RAIL, (22_000, 70_000)),
-    _Series("delphi", InjectorType.COMMON_RAIL, (15_000, 48_000)),
-    _Series("siemens", InjectorType.COMMON_RAIL, (25_000, 60_000)),
-    _Series("bosch", InjectorType.PUMP_INJECTOR, (12_000, 30_000)),
-    _Series("delphi", InjectorType.PUMP_INJECTOR, (11_000, 26_000)),
+    _Series("bosch", InjectorType.COMMON_RAIL, (18_000, 65_000), InjectorActuator.ELECTROMAGNETIC),
+    _Series("bosch", InjectorType.COMMON_RAIL, (35_000, 75_000), InjectorActuator.PIEZO),
+    _Series("denso", InjectorType.COMMON_RAIL, (22_000, 70_000), InjectorActuator.ELECTROMAGNETIC),
+    _Series("denso", InjectorType.COMMON_RAIL, (40_000, 80_000), InjectorActuator.PIEZO),
+    _Series("delphi", InjectorType.COMMON_RAIL, (15_000, 48_000), InjectorActuator.ELECTROMAGNETIC),
+    _Series("siemens", InjectorType.COMMON_RAIL, (25_000, 60_000), InjectorActuator.PIEZO),
+    _Series(
+        "bosch", InjectorType.PUMP_INJECTOR, (12_000, 30_000), InjectorActuator.ELECTROMAGNETIC
+    ),
+    _Series(
+        "delphi", InjectorType.PUMP_INJECTOR, (11_000, 26_000), InjectorActuator.ELECTROMAGNETIC
+    ),
 ]
 
 
@@ -112,7 +120,10 @@ def _description(series: _Series, condition: InjectorCondition, oem: str) -> str
             "Восстановленная форсунка: разобрана, дефектована, заменены изношенные детали, "
             "проверена на стенде."
         )
-    return f"{state} Тип: {kind}. Артикул производителя {oem}. Гарантия 12 месяцев."
+    drive = "пьезо" if series.actuator == InjectorActuator.PIEZO else "электромагнитная"
+    return (
+        f"{state} Тип: {kind}, привод: {drive}. Артикул производителя {oem}. Гарантия 12 месяцев."
+    )
 
 
 async def seed_catalog(session: AsyncSession, count: int, *, seed: int = 42) -> int:
@@ -160,6 +171,7 @@ async def seed_catalog(session: AsyncSession, count: int, *, seed: int = 42) -> 
                     manufacturer_id=manufacturers[series.manufacturer].id,
                     type=series.type,
                     condition=condition,
+                    actuator=series.actuator,
                     price_kopecks=int(new_price * ratio) // 100 * 100 * 100,
                     stock=0 if rng.random() < 0.1 else rng.randint(1, 12),
                     engines=list(engines),

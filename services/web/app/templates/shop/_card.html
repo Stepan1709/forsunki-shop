@@ -10,6 +10,7 @@
     <div class="flex flex-wrap gap-1.5">
       <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200">{{ i.manufacturer.name }}</span>
       <span class="badge {% if i.condition == 'new' %}bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200{% else %}bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200{% endif %}">{{ condition_labels[i.condition] }}</span>
+      {% if i.actuator %}<span class="badge bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-200">{{ actuator_labels[i.actuator] }}</span>{% endif %}
     </div>
     <h3 class="font-semibold leading-snug group-hover:text-brand-600">{{ i.title }}</h3>
     <div class="text-xs text-slate-500">Арт. {{ i.oem_number }}</div>
