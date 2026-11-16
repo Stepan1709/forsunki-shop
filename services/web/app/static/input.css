@@ -14,6 +14,21 @@
   .field-error { @apply mt-1 text-sm text-red-600 dark:text-red-400; }
   .htmx-request .spinner { @apply inline-block; }
   .spinner { @apply hidden h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent; }
+  /* Частые вопросы (страница «О нас»): раскрывающийся список на <details>, ответ плавно выезжает. */
+  .faq summary { @apply flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-3 font-medium; }
+  .faq summary::-webkit-details-marker { display: none; }
+  .faq summary::after { content: "+"; @apply text-xl font-normal text-brand-600; }
+  .faq[open] summary::after { content: "\2212"; }
+  .faq-answer { @apply px-4 pb-4 text-slate-700 dark:text-slate-300; animation: faq-slide 0.22s ease-out; }
+}
+
+@keyframes faq-slide {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .faq-answer { animation: none; }
 }
 
 [x-cloak] { display: none !important; }

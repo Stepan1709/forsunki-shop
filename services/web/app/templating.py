@@ -60,7 +60,13 @@ def parse_rubles(text: str) -> int | None:
     return int(value * 100)
 
 
+def paragraphs(text: str) -> list[str]:
+    """Текст -> абзацы: пустая строка между абзацами делит их. Пустые абзацы отбрасываются."""
+    return [p.strip() for p in str(text).replace("\r\n", "\n").split("\n\n") if p.strip()]
+
+
 templates.env.filters["money"] = money
+templates.env.filters["paragraphs"] = paragraphs
 templates.env.filters["dt"] = dt
 templates.env.globals.update(
     status_labels=STATUS_LABELS,

@@ -60,6 +60,13 @@ class Cache:
         except RedisError as exc:
             log.warning("cache_unavailable", op="bump_version", error=type(exc).__name__)
 
+    async def delete(self, key: str) -> None:
+        """Сбрасывает один ключ (для данных, которые не зависят от версии каталога, например страница «О нас»)."""
+        try:
+            await self._redis.delete(key)
+        except RedisError as exc:
+            log.warning("cache_unavailable", op="delete", error=type(exc).__name__)
+
     async def get_or_load(
         self,
         key: str,

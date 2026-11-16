@@ -16,7 +16,7 @@ from app.deps import csrf_protect
 from app.errors import install_error_handlers
 from app.logging import CorrelationIdMiddleware, configure_logging
 from app.metrics import MetricsMiddleware, metrics_endpoint
-from app.routes import admin, auth, cart, orders, pages, shop
+from app.routes import about, admin, admin_about, auth, cart, orders, pages, shop
 from app.sessions import SessionMiddleware, SessionStore
 from app.tracing import instrument_app, setup_tracing, shutdown_tracing
 
@@ -73,11 +73,13 @@ def create_app(
     protected = [Depends(csrf_protect)]
     for router in (
         pages.router,
+        about.router,
         auth.router,
         shop.router,
         cart.router,
         orders.router,
         admin.router,
+        admin_about.router,
     ):
         app.include_router(router, dependencies=protected)
     install_error_handlers(app)

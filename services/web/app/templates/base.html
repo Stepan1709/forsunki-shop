@@ -21,7 +21,9 @@
       <nav class="hidden items-center gap-6 text-sm font-medium md:flex" aria-label="Основное меню">
         <a href="/shop" class="hover:text-brand-600">Магазин</a>
         <a href="/repair" class="hover:text-brand-600">Ремонт</a>
+        <a href="/about" class="hover:text-brand-600">О нас</a>
         {% if user and user.is_admin %}<a href="/admin/products" class="hover:text-brand-600">Товары</a>{% endif %}
+        {% if user and user.is_admin %}<a href="/admin/about" class="hover:text-brand-600">Тексты</a>{% endif %}
       </nav>
       <div class="hidden items-center gap-3 md:flex">
         {% if user %}
@@ -47,8 +49,9 @@
       <div class="flex flex-col gap-3 text-sm font-medium">
         <a href="/shop">Магазин</a>
         <a href="/repair">Ремонт</a>
+        <a href="/about">О нас</a>
         {% if user %}
-          {% if user.is_admin %}<a href="/admin/products">Товары</a>{% endif %}
+          {% if user.is_admin %}<a href="/admin/products">Товары</a><a href="/admin/about">Тексты</a>{% endif %}
           <a href="/cart">Корзина</a>
           <a href="/profile">Профиль</a>
           <form method="post" action="/logout">

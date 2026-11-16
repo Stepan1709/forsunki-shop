@@ -143,7 +143,8 @@ async def app(infra_settings: Settings, migrated_db: None) -> AsyncIterator[Fast
             await conn.execute(
                 text(
                     "TRUNCATE users, refresh_tokens, injector_engines, injectors, engines,"
-                    " manufacturers, outbox, processed_messages, provider_events, repair_requests RESTART IDENTITY CASCADE"
+                    " manufacturers, outbox, processed_messages, provider_events, repair_requests,"
+                    " site_pages, faq_items RESTART IDENTITY CASCADE"
                 )
             )
         yield application
