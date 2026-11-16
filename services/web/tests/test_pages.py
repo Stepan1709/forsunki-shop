@@ -76,6 +76,25 @@ async def test_shop_load_more_returns_only_next_cards(
     assert api.called("GET", "/catalog/injectors")[-1].params["cursor"] == "c2"
 
 
+async def test_shop_load_more_button_replaces_its_wrapper_not_itself(
+    client: httpx.AsyncClient, api: FakeApi
+) -> None:
+    # Регрессия: кнопка лежит в обёртке col-span-full. Если htmx заменял только саму ссылку, новые
+    # карточки попадали внутрь обёртки, а не в сетку, и растягивались на всю ширину.
+    from httpx import Response
+
+    from tests.fake_api import INJECTORS
+
+    items = [i for i in INJECTORS.values() if i.get("is_active", True)][:1]
+    api.overrides["/catalog/injectors"] = lambda call: Response(
+        200, json={"items": items, "next_cursor": "c2"}
+    )
+    response = await client.get("/shop", headers=HTMX)
+    assert 'class="col-span-full text-center"' in response.text
+    assert 'hx-target="closest div"' in response.text
+    assert 'hx-target="this"' not in response.text
+
+
 async def test_shop_bad_cursor_shows_notice_instead_of_error(client: httpx.AsyncClient) -> None:
     response = await client.get("/shop?cursor=bad")
     assert response.status_code == 200
@@ -266,6 +285,15 @@ async def test_repair_page_has_prices_contacts_and_honeypot(client: httpx.AsyncC
     assert "+7 000 000-00-00" in page.text
     assert 'name="website"' in page.text
     assert "aria-hidden" in page.text
+
+
+async def test_repair_page_mentions_all_fuel_system_repair_including_pump(
+    client: httpx.AsyncClient,
+) -> None:
+    page = await client.get("/repair")
+    assert "топливную аппаратуру дизельных двигателей" in page.text
+    assert "ТНВД (топливный насос высокого давления)" in page.text
+    assert "Ремонт ТНВД" in page.text  # и в списке цен
 
 
 async def test_repair_submit_passes_idempotency_key_and_honeypot(
