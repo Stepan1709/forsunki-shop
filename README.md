@@ -54,7 +54,7 @@ flowchart LR
 | `web` | сайт: Jinja2 + HTMX + Alpine.js + Tailwind, сессии в Redis (BFF) | работает |
 | Fluent Bit, Elasticsearch, Kibana, S3 | сбор, поиск и архив логов (профиль `logging`) | работают |
 | Prometheus, Grafana, Jaeger (OpenTelemetry) | метрики, дашборд, алерты, трассировка (профили `monitoring` и `tracing`) | работают |
-| nginx | единая точка входа с TLS | в разработке |
+| nginx | единая точка входа с TLS (prod, см. раздел «Prod») | работает |
 
 ## Быстрый старт
 

@@ -1,11 +1,17 @@
 {% extends "base.html" %}
-{% block title %}Ремонт форсунок: {{ shop.shop_name }}{% endblock %}
-{% block description %}Диагностика и ремонт дизельных форсунок Common Rail и насос-форсунок на стенде.{% endblock %}
+{% block title %}Ремонт топливной аппаратуры: {{ shop.shop_name }}{% endblock %}
+{% block description %}Диагностика и ремонт топливной аппаратуры дизельных двигателей: форсунки Common Rail и насос-форсунки, ТНВД (топливные насосы высокого давления).{% endblock %}
 {% block content %}
-<h1 class="text-3xl font-bold">Ремонт форсунок</h1>
+<h1 class="text-3xl font-bold">Ремонт топливной аппаратуры</h1>
 <p class="mt-2 max-w-3xl text-lg text-slate-600 dark:text-slate-400">
-  Диагностируем и восстанавливаем форсунки Common Rail и насос-форсунки. Сначала проверка на стенде, потом согласование стоимости: без вашего согласия ремонт не начинается.
+  Ремонтируем всю топливную аппаратуру дизельных двигателей: форсунки Common Rail и насос-форсунки, а также ТНВД (топливные насосы высокого давления). Сначала проверка на стенде, потом согласование стоимости: без вашего согласия ремонт не начинается.
 </p>
+<ul class="mt-4 flex flex-wrap gap-2 text-sm" aria-label="Что ремонтируем">
+  <li class="badge bg-brand-50 text-brand-700 dark:bg-slate-800 dark:text-brand-300">Форсунки Common Rail</li>
+  <li class="badge bg-brand-50 text-brand-700 dark:bg-slate-800 dark:text-brand-300">Насос-форсунки</li>
+  <li class="badge bg-brand-50 text-brand-700 dark:bg-slate-800 dark:text-brand-300">ТНВД (топливный насос высокого давления)</li>
+  <li class="badge bg-brand-50 text-brand-700 dark:bg-slate-800 dark:text-brand-300">Прочая топливная аппаратура</li>
+</ul>
 
 <div class="mt-8 grid gap-8 lg:grid-cols-5">
   <div class="space-y-8 lg:col-span-2">
@@ -22,7 +28,7 @@
       <h2 class="text-xl font-semibold">Как мы работаем</h2>
       <ol class="mt-3 list-inside list-decimal space-y-1 text-slate-700 dark:text-slate-300">
         <li>Вы оставляете заявку, мастер звонит или пишет.</li>
-        <li>Привозите или отправляете форсунки.</li>
+        <li>Привозите или отправляете форсунки, ТНВД или другие узлы топливной системы.</li>
         <li>Диагностика на стенде и согласование цены.</li>
         <li>Ремонт, проверка, возврат с отчётом.</li>
       </ol>
