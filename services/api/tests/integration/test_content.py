@@ -181,8 +181,8 @@ async def test_questions_can_be_moved_up_and_down(
     b = await add_faq(client, admin_headers, "Вопрос B")
     c = await add_faq(client, admin_headers, "Вопрос C")
 
-    def move(item: dict[str, object], direction: str) -> object:
-        return client.post(
+    async def move(item: dict[str, object], direction: str) -> httpx.Response:
+        return await client.post(
             f"{ADMIN}/faq/{item['id']}/move", params={"direction": direction}, headers=admin_headers
         )
 
