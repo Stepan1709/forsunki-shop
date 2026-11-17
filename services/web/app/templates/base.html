@@ -24,6 +24,7 @@
         <a href="/about" class="hover:text-brand-600">О нас</a>
         {% if user and user.is_admin %}<a href="/admin/products" class="hover:text-brand-600">Товары</a>{% endif %}
         {% if user and user.is_admin %}<a href="/admin/about" class="hover:text-brand-600">Тексты</a>{% endif %}
+        {% if user and user.is_admin %}<a href="/admin/stats" class="hover:text-brand-600">Статистика</a>{% endif %}
       </nav>
       <div class="hidden items-center gap-3 md:flex">
         {% if user %}
@@ -51,7 +52,7 @@
         <a href="/repair">Ремонт</a>
         <a href="/about">О нас</a>
         {% if user %}
-          {% if user.is_admin %}<a href="/admin/products">Товары</a><a href="/admin/about">Тексты</a>{% endif %}
+          {% if user.is_admin %}<a href="/admin/products">Товары</a><a href="/admin/about">Тексты</a><a href="/admin/stats">Статистика</a>{% endif %}
           <a href="/cart">Корзина</a>
           <a href="/profile">Профиль</a>
           <form method="post" action="/logout">

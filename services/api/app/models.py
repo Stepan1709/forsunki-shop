@@ -12,4 +12,5 @@ from app.modules.content import models as content_models  # noqa: F401
 from app.modules.orders import models as orders_models  # noqa: F401
 from app.modules.payments import models as payments_models  # noqa: F401
 from app.modules.repair import models as repair_models  # noqa: F401
+from app.modules.stats import models as stats_models  # noqa: F401
 from app.modules.users import models as users_models  # noqa: F401

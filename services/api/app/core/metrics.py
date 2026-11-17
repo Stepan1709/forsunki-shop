@@ -51,6 +51,12 @@ CONSUMER_DURATION = Histogram(
     buckets=_LATENCY_BUCKETS,
 )
 
+STATS_FLUSHED = Counter(
+    "stats_flushed_views_total",
+    "Просмотры, перенесённые из счётчиков Redis в Postgres",
+    ["kind"],
+)
+
 OUTBOX_PENDING = Gauge("outbox_pending_events", "События в outbox, ещё не отправленные в брокер")
 # Насколько самое «просроченное» событие ждёт отправки сверх назначенного времени. Здоровый relay держит значение близким
 # к нулю; рост означает, что relay остановился или не успевает. События без подписчика (ждут повтора) сюда не попадают.

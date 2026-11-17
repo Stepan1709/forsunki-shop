@@ -105,6 +105,13 @@ class Settings(BaseSettings):
     retention_outbox_days: float = 7.0
     retention_inbox_days: float = 14.0
     retention_idempotency_days: float = 7.0
+    # Дневные итоги просмотров хранятся год: этого хватает для сравнения с прошлым годом.
+    retention_stats_days: float = 365.0
+
+    # Статистика просмотров: сайт считает их в своём Redis (база 1, там же его сессии), воркер раз в N секунд
+    # переносит накопленное в Postgres. Чаще, чем раз в сутки, чтобы сегодняшний день был виден на странице.
+    stats_redis_db: int = 1
+    stats_flush_interval_seconds: float = 3600.0
 
     # Письма. В dev SMTP-сервер это Mailpit (принимает письма и показывает их в веб-интерфейсе, наружу не шлёт).
     smtp_host: str = "mailpit"
@@ -162,6 +169,12 @@ class Settings(BaseSettings):
     def redis_url(self) -> str:
         password = quote(self.redis_password.get_secret_value(), safe="")
         return f"redis://:{password}@{self.redis_host}:{self.redis_port}/0"
+
+    @property
+    def stats_redis_url(self) -> str:
+        """Redis сайта: туда `web` пишет счётчики просмотров (та же база, что у его сессий)."""
+        password = quote(self.redis_password.get_secret_value(), safe="")
+        return f"redis://:{password}@{self.redis_host}:{self.redis_port}/{self.stats_redis_db}"
 
     @property
     def rabbitmq_url(self) -> str:

@@ -46,6 +46,14 @@ _TARGETS = (
     _Target(
         "idempotency_keys", "created_at < :cutoff", "user_id, key", "retention_idempotency_days"
     ),
+    # Столбец day имеет тип date: cutoff приводится к дате, иначе asyncpg не сравнит date с timestamptz.
+    _Target("site_stats_daily", "day < CAST(:cutoff AS date)", "day", "retention_stats_days"),
+    _Target(
+        "product_views_daily",
+        "day < CAST(:cutoff AS date)",
+        "day, injector_id",
+        "retention_stats_days",
+    ),
 )
 
 
