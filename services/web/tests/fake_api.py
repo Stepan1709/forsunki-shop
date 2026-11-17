@@ -9,6 +9,7 @@ import re
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 from typing import Any
 
 import httpx
@@ -258,7 +259,7 @@ class FakeApi:
                 return self._problem(409, "Недопустимый переход")
             self.order_status = "CANCELLED"
             return httpx.Response(200, json=self.orders[found.group(1)])
-        if p.startswith(("/admin/catalog", "/admin/content")) or (
+        if p.startswith(("/admin/catalog", "/admin/content", "/admin/stats")) or (
             m in ("PUT", "DELETE") and p.endswith("/image")
         ):
             return self._admin(call, email)
@@ -309,6 +310,57 @@ class FakeApi:
             ],
         }
 
+    def _admin_stats(self, call: Call) -> httpx.Response:
+        """Отчёт по присланному периоду: по точке на день (или неделю, месяц), просмотры только в первой."""
+        start = date.fromisoformat(call.params["from"])
+        end = date.fromisoformat(call.params["to"])
+        group = call.params.get("group", "day")
+        points = []
+        cursor = start
+        while cursor <= end:
+            points.append(
+                {
+                    "start": cursor.isoformat(),
+                    "page_views": 120 if cursor == start else 0,
+                    "registrations": 3 if cursor == start else 0,
+                    "orders": 2 if cursor == start else 0,
+                    "revenue_kopecks": 1_500_000 if cursor == start else 0,
+                }
+            )
+            cursor += timedelta(days={"day": 1, "week": 7, "month": 30}[group])
+        report = {
+            "date_from": start.isoformat(),
+            "date_to": end.isoformat(),
+            "group": group,
+            "views_tracked_since": "2026-03-01",
+            "totals": {
+                "page_views": 120,
+                "product_views": 45,
+                "registrations": 3,
+                "orders": 2,
+                "revenue_kopecks": 1_500_000,
+            },
+            "points": points,
+            "top_viewed": [
+                {
+                    "injector_id": 1,
+                    "oem_number": "0 445 110 183",
+                    "title": "Форсунка <b>Bosch</b>",
+                    "views": 30,
+                }
+            ],
+            "top_purchased": [
+                {
+                    "injector_id": 2,
+                    "oem_number": "095000-5550",
+                    "title": "Форсунка Denso",
+                    "quantity": 4,
+                    "revenue_kopecks": 1_200_000,
+                }
+            ],
+        }
+        return httpx.Response(200, json=report)
+
     def _admin_content(self, call: Call) -> httpx.Response:
         m, p = call.method, call.path
         if (m, p) == ("GET", "/admin/content"):
@@ -330,6 +382,8 @@ class FakeApi:
         if USERS[email][1] != "admin":
             return self._problem(403, "Недостаточно прав")
         m, p = call.method, call.path
+        if p == "/admin/stats":
+            return self._admin_stats(call)
         if p.startswith("/admin/content"):
             return self._admin_content(call)
         if (m, p) == ("GET", "/admin/catalog/injectors"):

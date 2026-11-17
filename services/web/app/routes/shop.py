@@ -9,6 +9,7 @@ from fastapi.responses import Response
 from app.api_client import ApiError
 from app.deps import ApiDep
 from app.errors import is_htmx
+from app.stats import record_product_view
 from app.templating import render
 
 router = APIRouter(prefix="/shop")
@@ -76,4 +77,7 @@ async def shop_list(
 @router.get("/{injector_id}")
 async def shop_card(request: Request, api: ApiDep, injector_id: int) -> Response:
     card = await api.get(f"/catalog/injectors/{injector_id}")
+    await record_product_view(
+        request, injector_id
+    )  # только после успешного ответа api: 404 не считается
     return render(request, "shop/card.html", {"item": card})

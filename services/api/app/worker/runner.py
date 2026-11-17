@@ -19,6 +19,7 @@ import httpx
 import structlog
 from aio_pika.abc import AbstractRobustConnection
 from prometheus_client import start_http_server
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.config import Settings
@@ -32,6 +33,7 @@ from app.modules.payments.factory import build_gateway
 from app.worker.relay import OutboxRelay
 from app.worker.retention import RetentionCleaner
 from app.worker.stats import StatsCollector
+from app.worker.stats_flush import StatsFlusher
 from app.worker.subscriptions import build_delay_queues, build_subscriptions
 from app.worker.sweeper import ExpirySweeper
 
@@ -51,12 +53,14 @@ class Worker:
         *,
         run_sweeper: bool = False,
         run_retention: bool = False,
+        run_stats_flush: bool = False,
     ) -> None:
         self._settings = settings
         self._subscriptions = subscriptions
         self._delay_queues = delay_queues
         self._run_sweeper = run_sweeper
         self._run_retention = run_retention
+        self._run_stats_flush = run_stats_flush
         self._stack: AsyncExitStack | None = None
         self._connection: AbstractRobustConnection | None = None
         self._consumers: list[Consumer] = []
@@ -134,6 +138,14 @@ class Worker:
                 self._tasks.append(
                     asyncio.create_task(cleaner.run(self._stop_background), name="retention")
                 )
+            if self._run_stats_flush:
+                # Redis сайта (база со счётчиками просмотров): свой клиент, создаётся один раз и закрывается со всеми.
+                stats_redis = Redis.from_url(s.stats_redis_url)
+                stack.push_async_callback(stats_redis.aclose)
+                flusher = StatsFlusher(stats_redis, session_factory, s)
+                self._tasks.append(
+                    asyncio.create_task(flusher.run(self._stop_background), name="stats_flush")
+                )
             if s.worker_metrics_port is not None:
                 # Воркер не веб-сервис, поэтому метрики отдаёт отдельный маленький HTTP-сервер в своём потоке.
                 server, _thread = start_http_server(s.worker_metrics_port)
@@ -176,7 +188,7 @@ class Worker:
 
 
 async def _amain(settings: Settings) -> None:
-    worker = Worker(settings, run_sweeper=True, run_retention=True)
+    worker = Worker(settings, run_sweeper=True, run_retention=True, run_stats_flush=True)
     await worker.start()
 
     stop_event = asyncio.Event()

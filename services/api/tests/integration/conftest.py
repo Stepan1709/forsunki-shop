@@ -144,7 +144,7 @@ async def app(infra_settings: Settings, migrated_db: None) -> AsyncIterator[Fast
                 text(
                     "TRUNCATE users, refresh_tokens, injector_engines, injectors, engines,"
                     " manufacturers, outbox, processed_messages, provider_events, repair_requests,"
-                    " site_pages, faq_items RESTART IDENTITY CASCADE"
+                    " site_pages, faq_items, site_stats_daily, product_views_daily RESTART IDENTITY CASCADE"
                 )
             )
         yield application

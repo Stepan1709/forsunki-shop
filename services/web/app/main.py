@@ -16,8 +16,9 @@ from app.deps import csrf_protect
 from app.errors import install_error_handlers
 from app.logging import CorrelationIdMiddleware, configure_logging
 from app.metrics import MetricsMiddleware, metrics_endpoint
-from app.routes import about, admin, admin_about, auth, cart, orders, pages, shop
+from app.routes import about, admin, admin_about, admin_stats, auth, cart, orders, pages, shop
 from app.sessions import SessionMiddleware, SessionStore
+from app.stats import StatsMiddleware
 from app.tracing import instrument_app, setup_tracing, shutdown_tracing
 
 log = structlog.get_logger("web")
@@ -60,6 +61,8 @@ def create_app(
     app.state.http = http
 
     # Порядок: внешний (последний добавленный) выполняется первым. Сначала correlation_id, затем сессия.
+    # Счётчик просмотров самый внутренний: он видит итоговый статус и тип ответа; сессию берёт из состояния запроса.
+    app.add_middleware(StatsMiddleware)
     app.add_middleware(SessionMiddleware, store=store, settings=settings)
     app.add_middleware(MetricsMiddleware)
     app.add_middleware(CorrelationIdMiddleware)
@@ -80,6 +83,7 @@ def create_app(
         orders.router,
         admin.router,
         admin_about.router,
+        admin_stats.router,
     ):
         app.include_router(router, dependencies=protected)
     install_error_handlers(app)
